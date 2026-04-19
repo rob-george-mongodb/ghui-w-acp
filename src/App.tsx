@@ -107,16 +107,16 @@ const reviewIcon = (pullRequest: PullRequestItem) => {
 
 const getRowLayout = (contentWidth: number) => {
 	const reviewWidth = 1
-	const checkWidth = 8
-	const ageWidth = 9
-	const leftWidth = Math.max(24, contentWidth - reviewWidth - checkWidth - ageWidth)
+	const checkWidth = 6
+	const ageWidth = 4
+	const leftWidth = Math.max(24, contentWidth - reviewWidth - checkWidth - ageWidth - 2) // -2 for spaces between columns
 	const numberWidth = 6
 	const titleWidth = Math.max(8, leftWidth - numberWidth - 2)
 	return { reviewWidth, checkWidth, ageWidth, numberWidth, titleWidth }
 }
 
 const fitCell = (text: string, width: number, align: "left" | "right" = "left") => {
-	const trimmed = text.length > width ? `${text.slice(0, Math.max(0, width - 3))}...` : text
+	const trimmed = text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text
 	return align === "right" ? trimmed.padStart(width, " ") : trimmed.padEnd(width, " ")
 }
 
