@@ -19,6 +19,9 @@ export interface PullRequestItem {
 	readonly title: string
 	readonly body: string
 	readonly labels: readonly PullRequestLabel[]
+	readonly additions: number
+	readonly deletions: number
+	readonly changedFiles: number
 	readonly state: PullRequestState
 	readonly reviewStatus: "draft" | "approved" | "changes" | "review" | "none"
 	readonly checkStatus: "passing" | "pending" | "failing" | "none"

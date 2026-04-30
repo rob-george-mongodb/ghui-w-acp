@@ -1,4 +1,4 @@
-import { TextAttributes } from "@opentui/core"
+import { parseColor, SyntaxStyle, TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
 import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
 import { useKeyboard, useTerminalDimensions } from "@opentui/react"
 import { Cause, Effect, Schedule } from "effect"
@@ -66,6 +66,17 @@ interface RetryProgress {
 	readonly max: number
 }
 
+interface DiffFilePatch {
+	readonly name: string
+	readonly filetype: string | undefined
+	readonly patch: string
+}
+
+type PullRequestDiffState =
+	| { readonly status: "loading" }
+	| { readonly status: "ready"; readonly patch: string; readonly files: readonly DiffFilePatch[] }
+	| { readonly status: "error"; readonly error: string }
+
 interface DetailPlaceholderInput {
 	readonly status: LoadStatus
 	readonly retryProgress: RetryProgress | null
@@ -108,6 +119,11 @@ const filterModeAtom = Atom.make(false).pipe(Atom.keepAlive)
 const pendingGAtom = Atom.make(false).pipe(Atom.keepAlive)
 const detailFullViewAtom = Atom.make(false).pipe(Atom.keepAlive)
 const detailScrollOffsetAtom = Atom.make(0).pipe(Atom.keepAlive)
+const diffFullViewAtom = Atom.make(false).pipe(Atom.keepAlive)
+const diffFileIndexAtom = Atom.make(0).pipe(Atom.keepAlive)
+const diffRenderViewAtom = Atom.make<"unified" | "split">("split").pipe(Atom.keepAlive)
+const diffWrapModeAtom = Atom.make<"none" | "word">("none").pipe(Atom.keepAlive)
+const pullRequestDiffCacheAtom = Atom.make<Record<string, PullRequestDiffState>>({}).pipe(Atom.keepAlive)
 
 const GROUP_ICON = "◆"
 
@@ -149,6 +165,9 @@ const removePullRequestLabelAtom = githubRuntime.fn<{ readonly repository: strin
 )
 const toggleDraftAtom = githubRuntime.fn<{ readonly repository: string; readonly number: number; readonly isDraft: boolean }>()((input) =>
 	GitHubService.use((github) => github.toggleDraftStatus(input.repository, input.number, input.isDraft))
+)
+const getPullRequestDiffAtom = githubRuntime.fn<{ readonly repository: string; readonly number: number }>()((input) =>
+	GitHubService.use((github) => github.getPullRequestDiff(input.repository, input.number))
 )
 
 const shortRepoName = (repository: string) => repository.split("/")[1] ?? repository
@@ -200,8 +219,8 @@ const getRowLayout = (contentWidth: number, numberWidth = 6) => {
 	const reviewWidth = 1
 	const checkWidth = 6
 	const ageWidth = 4
-	const leftWidth = Math.max(24, contentWidth - reviewWidth - checkWidth - ageWidth - 2) // -2 for spaces between columns
-	const titleWidth = Math.max(8, leftWidth - numberWidth - 2)
+	const fixedWidth = reviewWidth + 1 + numberWidth + 1 + checkWidth + ageWidth
+	const titleWidth = Math.max(8, contentWidth - fixedWidth)
 	return { reviewWidth, checkWidth, ageWidth, numberWidth, titleWidth }
 }
 
@@ -215,6 +234,8 @@ const fitCell = (text: string, width: number, align: "left" | "right" = "left") 
 	const trimmed = text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text
 	return align === "right" ? trimmed.padStart(width, " ") : trimmed.padEnd(width, " ")
 }
+
+const trimCell = (text: string, width: number) => text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text
 
 const centerCell = (text: string, width: number) => {
 	const trimmed = text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text
@@ -315,6 +336,154 @@ const labelTextColor = (color: string) => {
 	}
 	return "#f8fafc"
 }
+
+const diffSyntaxStyle = SyntaxStyle.fromStyles({
+	keyword: { fg: parseColor("#f4a51c"), bold: true },
+	"keyword.import": { fg: parseColor("#f4a51c"), bold: true },
+	string: { fg: parseColor("#d7c5a1") },
+	comment: { fg: parseColor(colors.muted), italic: true },
+	number: { fg: parseColor("#93c5fd") },
+	boolean: { fg: parseColor("#93c5fd") },
+	constant: { fg: parseColor("#93c5fd") },
+	function: { fg: parseColor("#7dd3a3") },
+	"function.call": { fg: parseColor("#7dd3a3") },
+	constructor: { fg: parseColor("#f59e0b") },
+	type: { fg: parseColor("#f59e0b") },
+	operator: { fg: parseColor("#f87171") },
+	variable: { fg: parseColor(colors.text) },
+	property: { fg: parseColor("#93c5fd") },
+	bracket: { fg: parseColor(colors.text) },
+	punctuation: { fg: parseColor(colors.text) },
+	default: { fg: parseColor(colors.text) },
+})
+
+const extensionFiletypes: Record<string, string> = {
+	c: "c",
+	cc: "cpp",
+	cpp: "cpp",
+	cs: "csharp",
+	css: "css",
+	go: "go",
+	h: "c",
+	hpp: "cpp",
+	html: "html",
+	java: "java",
+	js: "javascript",
+	jsx: "javascript",
+	json: "json",
+	kt: "kotlin",
+	md: "markdown",
+	mjs: "javascript",
+	py: "python",
+	rs: "rust",
+	rb: "ruby",
+	sh: "bash",
+	svelte: "svelte",
+	toml: "toml",
+	ts: "typescript",
+	tsx: "typescript",
+	txt: "text",
+	vue: "vue",
+	yaml: "yaml",
+	yml: "yaml",
+	zig: "zig",
+}
+
+const filetypeForPath = (path: string) => {
+	const basename = path.split("/").at(-1) ?? path
+	if (basename === "Dockerfile") return "dockerfile"
+	const extension = basename.includes(".") ? basename.split(".").at(-1)?.toLowerCase() : undefined
+	return extension ? extensionFiletypes[extension] : undefined
+}
+
+const unquoteDiffPath = (path: string) => path.replace(/^"|"$/g, "").replace(/^a\//, "").replace(/^b\//, "")
+
+const patchFileName = (patch: string) => {
+	const diffLine = patch.split("\n").find((line) => line.startsWith("diff --git "))
+	if (diffLine) {
+		const match = diffLine.match(/^diff --git\s+(\S+)\s+(\S+)/)
+		if (match) {
+			const next = unquoteDiffPath(match[2]!)
+			if (next !== "/dev/null") return next
+			return unquoteDiffPath(match[1]!)
+		}
+	}
+
+	const nextLine = patch.split("\n").find((line) => line.startsWith("+++ "))
+	return nextLine ? unquoteDiffPath(nextLine.slice(4).trim()) : "diff"
+}
+
+const splitPatchFiles = (patch: string): readonly DiffFilePatch[] => {
+	const trimmed = patch.trimEnd()
+	if (trimmed.length === 0) return []
+
+	const matches = [...trimmed.matchAll(/^diff --git .+$/gm)]
+	if (matches.length === 0) {
+		return [{ name: "diff", filetype: undefined, patch: trimmed }]
+	}
+
+	return matches.map((match, index) => {
+		const start = match.index ?? 0
+		const end = index + 1 < matches.length ? matches[index + 1]!.index ?? trimmed.length : trimmed.length
+		const filePatch = trimmed.slice(start, end).trimEnd()
+		const name = patchFileName(filePatch)
+		return { name, filetype: filetypeForPath(name), patch: filePatch }
+	})
+}
+
+const pullRequestDiffKey = (pullRequest: PullRequestItem) => `${pullRequest.repository}#${pullRequest.number}`
+
+const diffStatText = (pullRequest: PullRequestItem) => {
+	const files = pullRequest.changedFiles === 1 ? "1 file" : `${pullRequest.changedFiles} files`
+	return `+${pullRequest.additions} -${pullRequest.deletions}  ${files}`
+}
+
+const patchRenderableLineCount = (patch: string, view: "unified" | "split") => {
+	let count = 0
+	let inHunk = false
+	let deletions = 0
+	let additions = 0
+
+	const flushChangeBlock = () => {
+		if (deletions === 0 && additions === 0) return
+		count += view === "split" ? Math.max(deletions, additions) : deletions + additions
+		deletions = 0
+		additions = 0
+	}
+
+	for (const line of patch.split("\n")) {
+		if (line.startsWith("@@")) {
+			flushChangeBlock()
+			inHunk = true
+			continue
+		}
+
+		if (!inHunk) continue
+
+		const firstChar = line[0]
+		if (firstChar === "\\") continue
+
+		if (firstChar === "-") {
+			deletions++
+			continue
+		}
+
+		if (firstChar === "+") {
+			additions++
+			continue
+		}
+
+		if (firstChar === " ") {
+			flushChangeBlock()
+			count++
+		}
+	}
+
+	flushChangeBlock()
+	return Math.max(1, count)
+}
+
+const isShiftG = (key: { readonly name: string; readonly shift?: boolean }) => key.name === "G" || key.name === "g" && key.shift
 
 const getDetailPlaceholderContent = ({
 	status,
@@ -499,6 +668,7 @@ const FooterHints = ({
 	filterEditing,
 	showFilterClear,
 	detailFullView,
+	diffFullView,
 	hasSelection,
 	hasError,
 	isLoading,
@@ -508,6 +678,7 @@ const FooterHints = ({
 	filterEditing: boolean
 	showFilterClear: boolean
 	detailFullView: boolean
+	diffFullView: boolean
 	hasSelection: boolean
 	hasError: boolean
 	isLoading: boolean
@@ -529,6 +700,52 @@ const FooterHints = ({
 				<span fg={colors.muted}> clear  </span>
 				<span fg={colors.count}>ctrl-w</span>
 				<span fg={colors.muted}> word</span>
+			</TextLine>
+		)
+	}
+
+	if (diffFullView) {
+		return (
+			<TextLine>
+				<span fg={colors.count}>esc</span>
+				<span fg={colors.muted}> back  </span>
+				<span fg={colors.count}>j/k</span>
+				<span fg={colors.muted}> scroll  </span>
+				<span fg={colors.count}>gg/G</span>
+				<span fg={colors.muted}> top/bot  </span>
+				<span fg={colors.count}>v</span>
+				<span fg={colors.muted}> view  </span>
+				<span fg={colors.count}>w</span>
+				<span fg={colors.muted}> wrap  </span>
+				<span fg={colors.count}>[]</span>
+				<span fg={colors.muted}> files  </span>
+				<span fg={colors.count}>r</span>
+				<span fg={colors.muted}> reload  </span>
+				<span fg={colors.count}>o</span>
+				<span fg={colors.muted}> open  </span>
+				<span fg={colors.count}>q</span>
+				<span fg={colors.muted}> quit</span>
+			</TextLine>
+		)
+	}
+
+	if (detailFullView) {
+		return (
+			<TextLine>
+				<span fg={colors.count}>esc</span>
+				<span fg={colors.muted}> back  </span>
+				<span fg={colors.count}>j/k</span>
+				<span fg={colors.muted}> scroll  </span>
+				<span fg={colors.count}>gg/G</span>
+				<span fg={colors.muted}> top/bot  </span>
+				<span fg={colors.count}>ctrl-d/u</span>
+				<span fg={colors.muted}> page  </span>
+				<span fg={colors.count}>o</span>
+				<span fg={colors.muted}> open  </span>
+				<span fg={colors.count}>y</span>
+				<span fg={colors.muted}> copy  </span>
+				<span fg={colors.count}>q</span>
+				<span fg={colors.muted}> quit</span>
 			</TextLine>
 		)
 	}
@@ -577,6 +794,8 @@ const FooterHints = ({
 				<>
 					<span fg={colors.count}>d</span>
 					<span fg={colors.muted}> draft  </span>
+					<span fg={colors.count}>p</span>
+					<span fg={colors.muted}> diff  </span>
 					<span fg={colors.count}>l</span>
 					<span fg={colors.muted}> labels  </span>
 					<span fg={colors.count}>o</span>
@@ -614,6 +833,8 @@ const PullRequestRow = ({
 	const checkText = checkLabel(pullRequest)?.replace(/^checks\s+/, "") ?? ""
 	const ageText = `${daysOpen(pullRequest.createdAt)}d`
 	const { reviewWidth, checkWidth, ageWidth, numberWidth, titleWidth } = getRowLayout(contentWidth, numWidth)
+	const rowWidth = reviewWidth + 1 + numberWidth + 1 + titleWidth + checkWidth + ageWidth
+	const fillerWidth = Math.max(0, contentWidth - rowWidth)
 
 	return (
 		<box height={1} onMouseDown={onSelect}>
@@ -625,6 +846,7 @@ const PullRequestRow = ({
 				<span>{fitCell(pullRequest.title, titleWidth)}</span>
 				<span fg={statusColor(pullRequest.checkStatus)}>{fitCell(checkText, checkWidth, "right")}</span>
 				<span fg={colors.muted}>{fitCell(ageText, ageWidth, "right")}</span>
+				{fillerWidth > 0 ? <span>{" ".repeat(fillerWidth)}</span> : null}
 			</TextLine>
 		</box>
 	)
@@ -807,6 +1029,12 @@ const DetailHeader = ({
 	const wrappedTitle = wrapText(pullRequest.title, Math.max(1, paneWidth - 2))
 	const unique = deduplicateChecks(pullRequest.checks)
 	const checkRows = checksRowCount(unique)
+	const statsText = diffStatText(pullRequest)
+	const labelsWidth = labels.length > 0
+		? labels.reduce((total, label, index) => total + label.name.length + 2 + (index > 0 ? 1 : 0), 0)
+		: "no labels".length
+	const showStats = contentWidth - labelsWidth - statsText.length >= 2
+	const statsGap = Math.max(2, contentWidth - labelsWidth - statsText.length)
 
 	return (
 		<>
@@ -849,6 +1077,15 @@ const DetailHeader = ({
 							<span bg={labelColor(label)} fg={labelTextColor(labelColor(label))}> {label.name} </span>
 						</Fragment>
 					)) : <span fg={colors.muted}>no labels</span>}
+					{showStats ? (
+						<>
+							<span fg={colors.muted}>{" ".repeat(statsGap)}</span>
+							<span fg={colors.status.passing}>+{pullRequest.additions}</span>
+							<span fg={colors.muted}> </span>
+							<span fg={colors.status.failing}>-{pullRequest.deletions}</span>
+							<span fg={colors.muted}>  {pullRequest.changedFiles === 1 ? "1 file" : `${pullRequest.changedFiles} files`}</span>
+						</>
+					) : null}
 				</TextLine>
 			</box>
 			<box height={1}><Divider width={paneWidth} /></box>
@@ -993,6 +1230,127 @@ const DetailsPane = ({
 	)
 }
 
+const PullRequestDiffPane = ({
+	pullRequest,
+	diffState,
+	fileIndex,
+	view,
+	wrapMode,
+	paneWidth,
+	height,
+	loadingIndicator,
+	scrollRef,
+}: {
+	pullRequest: PullRequestItem | null
+	diffState: PullRequestDiffState | undefined
+	fileIndex: number
+	view: "unified" | "split"
+	wrapMode: "none" | "word"
+	paneWidth: number
+	height: number
+	loadingIndicator: string
+	scrollRef: React.Ref<ScrollBoxRenderable>
+}) => {
+	if (!pullRequest) {
+		return <LoadingPane content={{ title: "No pull request selected", hint: "Press esc to go back" }} width={paneWidth} height={height} />
+	}
+
+	const stats = diffStatText(pullRequest)
+	const headerWidth = Math.max(24, paneWidth - 2)
+	const leftHeader = `#${pullRequest.number} ${shortRepoName(pullRequest.repository)}`
+	const headerGap = Math.max(2, headerWidth - leftHeader.length - stats.length)
+
+	if (!diffState || diffState.status === "loading") {
+		return (
+			<box height={height} flexDirection="column">
+				<box height={1} paddingLeft={1} paddingRight={1}>
+					<TextLine>
+						<span fg={colors.count}>#{pullRequest.number}</span>
+						<span fg={colors.muted}> {shortRepoName(pullRequest.repository)}</span>
+						<span fg={colors.muted}>{" ".repeat(headerGap)}</span>
+						<span fg={colors.status.passing}>+{pullRequest.additions}</span>
+						<span fg={colors.muted}> </span>
+						<span fg={colors.status.failing}>-{pullRequest.deletions}</span>
+						<span fg={colors.muted}>  {pullRequest.changedFiles === 1 ? "1 file" : `${pullRequest.changedFiles} files`}</span>
+					</TextLine>
+				</box>
+				<Divider width={paneWidth} />
+				<LoadingPane content={{ title: `${loadingIndicator} Loading diff`, hint: "Fetching patch from GitHub" }} width={paneWidth} height={Math.max(1, height - 2)} />
+			</box>
+		)
+	}
+
+	if (diffState.status === "error") {
+		return (
+			<box height={height} flexDirection="column">
+				<box height={1} paddingLeft={1} paddingRight={1}>
+					<PlainLine text={`#${pullRequest.number} ${shortRepoName(pullRequest.repository)} diff`} fg={colors.count} bold />
+				</box>
+				<Divider width={paneWidth} />
+				<StatusCard content={{ title: "Could not load diff", hint: diffState.error }} width={paneWidth} />
+			</box>
+		)
+	}
+
+	if (diffState.files.length === 0) {
+		return <LoadingPane content={{ title: "No diff", hint: "This PR has no patch contents" }} width={paneWidth} height={height} />
+	}
+
+	const safeIndex = Math.max(0, Math.min(fileIndex, diffState.files.length - 1))
+	const file = diffState.files[safeIndex]!
+	const fileCounter = `${safeIndex + 1}/${diffState.files.length}`
+	const fileNameWidth = Math.max(8, headerWidth - fileCounter.length - 2)
+	const diffHeight = patchRenderableLineCount(file.patch, view)
+
+	return (
+		<box height={height} flexDirection="column">
+			<box height={1} paddingLeft={1} paddingRight={1}>
+				<TextLine>
+					<span fg={colors.count}>#{pullRequest.number}</span>
+					<span fg={colors.muted}> {shortRepoName(pullRequest.repository)}</span>
+					<span fg={colors.muted}>{" ".repeat(headerGap)}</span>
+					<span fg={colors.status.passing}>+{pullRequest.additions}</span>
+					<span fg={colors.muted}> </span>
+					<span fg={colors.status.failing}>-{pullRequest.deletions}</span>
+					<span fg={colors.muted}>  {pullRequest.changedFiles === 1 ? "1 file" : `${pullRequest.changedFiles} files`}</span>
+				</TextLine>
+			</box>
+			<box height={1} paddingLeft={1} paddingRight={1}>
+				<TextLine>
+					<span fg={colors.text}>{fitCell(file.name, fileNameWidth)}</span>
+					<span fg={colors.muted}>  {fileCounter}</span>
+				</TextLine>
+			</box>
+			<Divider width={paneWidth} />
+			<scrollbox ref={scrollRef} focused flexGrow={1} scrollY scrollX={false}>
+				<diff
+					key={`${pullRequest.url}-${safeIndex}-${view}-${wrapMode}`}
+					diff={file.patch}
+					view={view}
+					syncScroll
+					filetype={file.filetype ?? "text"}
+					syntaxStyle={diffSyntaxStyle}
+					showLineNumbers
+					wrapMode={wrapMode}
+					addedBg="#17351f"
+					removedBg="#3a1e22"
+					contextBg="transparent"
+					addedSignColor={colors.status.passing}
+					removedSignColor={colors.status.failing}
+					lineNumberFg={colors.muted}
+					lineNumberBg="#151515"
+					addedLineNumberBg="#12301a"
+					removedLineNumberBg="#35171b"
+					selectionBg={colors.selectedBg}
+					selectionFg={colors.selectedText}
+					height={diffHeight}
+					style={{ flexShrink: 0 }}
+				/>
+			</scrollbox>
+		</box>
+	)
+}
+
 const LabelModal = ({
 	state,
 	currentLabels,
@@ -1066,17 +1424,17 @@ const LabelModal = ({
 						const isActive = currentNames.has(label.name.toLowerCase())
 						const isSelected = actualIndex === selectedIndex
 						const status = isActive ? "added" : ""
-						const nameWidth = Math.max(8, contentWidth - 10 - status.length)
-						const gap = Math.max(1, contentWidth - 8 - Math.min(label.name.length, nameWidth) - status.length)
+						const statusText = status.length > 0 ? ` ${status}` : ""
+						const nameWidth = Math.max(1, contentWidth - 5 - statusText.length)
 						return (
 							<box key={label.name} height={1}>
 								<TextLine bg={isSelected ? colors.selectedBg : undefined}>
-									<span fg={isSelected ? colors.accent : colors.muted}>{isSelected ? "›" : " "}</span>
-									<span fg={isActive ? colors.status.passing : colors.muted}>{isActive ? " ✓ " : "   "}</span>
+									<span fg={isActive ? colors.status.passing : colors.muted}>{isActive ? "✓" : " "}</span>
+									<span> </span>
 									<span bg={labelColor(label)}>  </span>
-									<span fg={isSelected ? colors.selectedText : colors.text}> {fitCell(label.name, nameWidth)}</span>
-									<span fg={colors.muted}>{" ".repeat(gap)}</span>
-									{status ? <span fg={colors.status.passing}>{status}</span> : null}
+									<span> </span>
+									<span fg={isSelected ? colors.selectedText : colors.text}>{trimCell(label.name, nameWidth)}</span>
+									{statusText ? <span fg={colors.status.passing}>{statusText}</span> : null}
 								</TextLine>
 							</box>
 						)
@@ -1091,7 +1449,7 @@ const LabelModal = ({
 					<span fg={colors.muted}> move  </span>
 					<span fg={colors.count}>enter</span>
 					<span fg={colors.muted}> toggle  </span>
-					<span fg={colors.count}>/type</span>
+					<span fg={colors.count}>/</span>
 					<span fg={colors.muted}> filter  </span>
 					<span fg={colors.count}>esc</span>
 					<span fg={colors.muted}> close</span>
@@ -1114,6 +1472,11 @@ export const App = () => {
 	const [pendingG, setPendingG] = useAtom(pendingGAtom)
 	const [detailFullView, setDetailFullView] = useAtom(detailFullViewAtom)
 	const [_detailScrollOffset, setDetailScrollOffset] = useAtom(detailScrollOffsetAtom)
+	const [diffFullView, setDiffFullView] = useAtom(diffFullViewAtom)
+	const [diffFileIndex, setDiffFileIndex] = useAtom(diffFileIndexAtom)
+	const [diffRenderView, setDiffRenderView] = useAtom(diffRenderViewAtom)
+	const [diffWrapMode, setDiffWrapMode] = useAtom(diffWrapModeAtom)
+	const [pullRequestDiffCache, setPullRequestDiffCache] = useAtom(pullRequestDiffCacheAtom)
 	const [labelModal, setLabelModal] = useAtom(labelModalAtom)
 	const [labelCache, setLabelCache] = useAtom(labelCacheAtom)
 	const [pullRequestOverrides, setPullRequestOverrides] = useAtom(pullRequestOverridesAtom)
@@ -1124,6 +1487,7 @@ export const App = () => {
 	const addPullRequestLabel = useAtomSet(addPullRequestLabelAtom, { mode: "promise" })
 	const removePullRequestLabel = useAtomSet(removePullRequestLabelAtom, { mode: "promise" })
 	const toggleDraftStatus = useAtomSet(toggleDraftAtom, { mode: "promise" })
+	const getPullRequestDiff = useAtomSet(getPullRequestDiffAtom, { mode: "promise" })
 	const groupIcon = GROUP_ICON
 	const contentWidth = Math.max(60, width ?? 100)
 	const isWideLayout = (width ?? 100) >= 100
@@ -1138,6 +1502,8 @@ export const App = () => {
 	const wideBodyHeight = Math.max(8, (height ?? 24) - 4)
 	const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const pendingGTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const detailScrollRef = useRef<ScrollBoxRenderable | null>(null)
+	const diffScrollRef = useRef<ScrollBoxRenderable | null>(null)
 	const headerFooterWidth = Math.max(24, contentWidth - 2)
 
 	const flashNotice = (message: string) => {
@@ -1237,7 +1603,13 @@ export const App = () => {
 		})
 	}, [visiblePullRequests.length])
 
+	useEffect(() => {
+		setDiffFileIndex(0)
+	}, [selectedIndex])
+
 	const selectedPullRequest = visiblePullRequests[selectedIndex] ?? null
+	const selectedDiffState = selectedPullRequest ? pullRequestDiffCache[pullRequestDiffKey(selectedPullRequest)] : undefined
+	const effectiveDiffRenderView = contentWidth >= 100 ? diffRenderView : "unified"
 	const loadingIndicator = LOADING_FRAMES[loadingFrame % LOADING_FRAMES.length]!
 	const detailPlaceholderContent = getDetailPlaceholderContent({
 		status: pullRequestStatus,
@@ -1258,6 +1630,38 @@ export const App = () => {
 		: [DETAIL_PLACEHOLDER_ROWS]
 
 	const halfPage = Math.max(1, Math.floor(wideBodyHeight / 2))
+
+	const loadPullRequestDiff = (pullRequest: PullRequestItem, force = false) => {
+		const key = pullRequestDiffKey(pullRequest)
+		const existing = pullRequestDiffCache[key]
+		if (!force && (existing?.status === "ready" || existing?.status === "loading")) return
+
+		setPullRequestDiffCache((current) => ({ ...current, [key]: { status: "loading" } }))
+		void getPullRequestDiff({ repository: pullRequest.repository, number: pullRequest.number })
+			.then((patch) => {
+				setPullRequestDiffCache((current) => ({
+					...current,
+					[key]: { status: "ready", patch, files: splitPatchFiles(patch) },
+				}))
+			})
+			.catch((error) => {
+				setPullRequestDiffCache((current) => ({
+					...current,
+					[key]: { status: "error", error: errorMessage(error) },
+				}))
+				flashNotice(errorMessage(error))
+			})
+	}
+
+	const openDiffView = () => {
+		if (!selectedPullRequest) return
+		setDiffFullView(true)
+		setDetailFullView(false)
+		setDiffFileIndex(0)
+		setDiffRenderView(contentWidth >= 100 ? "split" : "unified")
+		diffScrollRef.current?.scrollTo({ x: 0, y: 0 })
+		loadPullRequestDiff(selectedPullRequest)
+	}
 
 	const openLabelModal = () => {
 		if (!selectedPullRequest) return
@@ -1385,6 +1789,100 @@ export const App = () => {
 			return
 		}
 
+		if (diffFullView) {
+			if (key.name === "escape" || key.name === "return" || key.name === "enter") {
+				setDiffFullView(false)
+				return
+			}
+			if (key.name === "home") {
+				diffScrollRef.current?.scrollTo({ x: 0, y: 0 })
+				return
+			}
+			if (key.name === "end") {
+				diffScrollRef.current?.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
+				return
+			}
+			if (key.name === "pageup") {
+				diffScrollRef.current?.scrollBy({ x: 0, y: -halfPage })
+				return
+			}
+			if (key.name === "pagedown") {
+				diffScrollRef.current?.scrollBy({ x: 0, y: halfPage })
+				return
+			}
+			if (isShiftG(key)) {
+				diffScrollRef.current?.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
+				setPendingG(false)
+				if (pendingGTimeoutRef.current !== null) {
+					clearTimeout(pendingGTimeoutRef.current)
+					pendingGTimeoutRef.current = null
+				}
+				return
+			}
+			if (key.name === "g") {
+				if (pendingG) {
+					diffScrollRef.current?.scrollTo({ x: 0, y: 0 })
+					setPendingG(false)
+					if (pendingGTimeoutRef.current !== null) {
+						clearTimeout(pendingGTimeoutRef.current)
+						pendingGTimeoutRef.current = null
+					}
+				} else {
+					setPendingG(true)
+					pendingGTimeoutRef.current = setTimeout(() => {
+						setPendingG(false)
+						pendingGTimeoutRef.current = null
+					}, 500)
+				}
+				return
+			}
+			if (key.name === "up" || key.name === "k") {
+				diffScrollRef.current?.scrollBy({ x: 0, y: -1 })
+				return
+			}
+			if (key.name === "down" || key.name === "j") {
+				diffScrollRef.current?.scrollBy({ x: 0, y: 1 })
+				return
+			}
+			if (key.ctrl && key.name === "u") {
+				diffScrollRef.current?.scrollBy({ x: 0, y: -halfPage })
+				return
+			}
+			if (key.ctrl && (key.name === "d" || key.name === "v")) {
+				diffScrollRef.current?.scrollBy({ x: 0, y: halfPage })
+				return
+			}
+			if (key.name === "v") {
+				setDiffRenderView((current) => current === "unified" ? "split" : "unified")
+				return
+			}
+			if (key.name === "w") {
+				setDiffWrapMode((current) => current === "none" ? "word" : "none")
+				return
+			}
+			if (key.name === "r" && selectedPullRequest) {
+				loadPullRequestDiff(selectedPullRequest, true)
+				flashNotice(`Refreshing diff for #${selectedPullRequest.number}`)
+				return
+			}
+			if ((key.name === "]" || key.name === "right" || key.name === "l") && selectedDiffState?.status === "ready") {
+				setDiffFileIndex((current) => Math.min(Math.max(0, selectedDiffState.files.length - 1), current + 1))
+				diffScrollRef.current?.scrollTo({ x: 0, y: 0 })
+				return
+			}
+			if ((key.name === "[" || key.name === "left" || key.name === "h") && selectedDiffState?.status === "ready") {
+				setDiffFileIndex((current) => Math.max(0, current - 1))
+				diffScrollRef.current?.scrollTo({ x: 0, y: 0 })
+				return
+			}
+			if (key.name === "o" && selectedPullRequest) {
+				void Bun.spawn({ cmd: ["open", selectedPullRequest.url], stdout: "ignore", stderr: "ignore" })
+				flashNotice(`Opened #${selectedPullRequest.number} in browser`)
+				return
+			}
+			return
+		}
+
 		// Fullscreen detail mode: scroll with j/k, Ctrl-D/U, exit with Escape/Enter
 		if (detailFullView) {
 			if (key.name === "escape" || (key.name === "return" || key.name === "enter")) {
@@ -1392,19 +1890,66 @@ export const App = () => {
 				setDetailScrollOffset(0)
 				return
 			}
+			if (key.name === "home") {
+				detailScrollRef.current?.scrollTo({ x: 0, y: 0 })
+				setDetailScrollOffset(0)
+				return
+			}
+			if (key.name === "end" || isShiftG(key)) {
+				detailScrollRef.current?.scrollTo({ x: 0, y: Number.MAX_SAFE_INTEGER })
+				setDetailScrollOffset(Number.MAX_SAFE_INTEGER)
+				setPendingG(false)
+				if (pendingGTimeoutRef.current !== null) {
+					clearTimeout(pendingGTimeoutRef.current)
+					pendingGTimeoutRef.current = null
+				}
+				return
+			}
+			if (key.name === "pageup") {
+				detailScrollRef.current?.scrollBy({ x: 0, y: -halfPage })
+				setDetailScrollOffset((current) => Math.max(0, current - halfPage))
+				return
+			}
+			if (key.name === "pagedown") {
+				detailScrollRef.current?.scrollBy({ x: 0, y: halfPage })
+				setDetailScrollOffset((current) => current + halfPage)
+				return
+			}
+			if (key.name === "g") {
+				if (pendingG) {
+					detailScrollRef.current?.scrollTo({ x: 0, y: 0 })
+					setDetailScrollOffset(0)
+					setPendingG(false)
+					if (pendingGTimeoutRef.current !== null) {
+						clearTimeout(pendingGTimeoutRef.current)
+						pendingGTimeoutRef.current = null
+					}
+				} else {
+					setPendingG(true)
+					pendingGTimeoutRef.current = setTimeout(() => {
+						setPendingG(false)
+						pendingGTimeoutRef.current = null
+					}, 500)
+				}
+				return
+			}
 			if (key.name === "up" || key.name === "k") {
+				detailScrollRef.current?.scrollBy({ x: 0, y: -1 })
 				setDetailScrollOffset((current) => Math.max(0, current - 1))
 				return
 			}
 			if (key.name === "down" || key.name === "j") {
+				detailScrollRef.current?.scrollBy({ x: 0, y: 1 })
 				setDetailScrollOffset((current) => current + 1)
 				return
 			}
 			if (key.ctrl && key.name === "u") {
+				detailScrollRef.current?.scrollBy({ x: 0, y: -halfPage })
 				setDetailScrollOffset((current) => Math.max(0, current - halfPage))
 				return
 			}
 			if (key.ctrl && (key.name === "d" || key.name === "v")) {
+				detailScrollRef.current?.scrollBy({ x: 0, y: halfPage })
 				setDetailScrollOffset((current) => current + halfPage)
 				return
 			}
@@ -1523,7 +2068,7 @@ export const App = () => {
 			return
 		}
 		// Vim-style navigation: gg to go to top, G to go to bottom
-		if (key.name === "G" || key.name === "g" && key.shift) {
+		if (isShiftG(key)) {
 			setSelectedIndex((_current) => {
 				if (visiblePullRequests.length === 0) return 0
 				return visiblePullRequests.length - 1
@@ -1550,6 +2095,10 @@ export const App = () => {
 		if ((key.name === "return" || key.name === "enter") && !detailFullView) {
 			setDetailFullView(true)
 			setDetailScrollOffset(0)
+			return
+		}
+		if (key.name === "p" && selectedPullRequest) {
+			openDiffView()
 			return
 		}
 		if (key.name === "l" && selectedPullRequest) {
@@ -1604,7 +2153,8 @@ export const App = () => {
 		onSelectPullRequest: selectPullRequestByUrl,
 	} as const
 
-	const labelModalWidth = Math.min(40, contentWidth - 4)
+	const longestLabelName = labelModal.availableLabels.reduce((max, label) => Math.max(max, label.name.length), 0)
+	const labelModalWidth = Math.min(Math.max(42, longestLabelName + 16), 56, contentWidth - 4)
 	const labelModalHeight = Math.min(20, (height ?? 24) - 4)
 	const labelModalLeft = Math.floor((contentWidth - labelModalWidth) / 2)
 	const labelModalTop = Math.floor(((height ?? 24) - labelModalHeight) / 2)
@@ -1614,16 +2164,28 @@ export const App = () => {
 			<box paddingLeft={1} paddingRight={1} flexDirection="column">
 				<PlainLine text={headerLine} fg={colors.muted} bold />
 			</box>
-			{isWideLayout && !detailFullView && !isInitialLoading ? (
+			{isWideLayout && !detailFullView && !diffFullView && !isInitialLoading ? (
 				<Divider width={contentWidth} junctionAt={dividerJunctionAt} junctionChar="┬" />
 			) : (
 				<Divider width={contentWidth} />
 			)}
 			{isInitialLoading ? (
 				<LoadingPane content={detailPlaceholderContent} width={contentWidth} height={wideBodyHeight} />
+			) : diffFullView ? (
+				<PullRequestDiffPane
+					pullRequest={selectedPullRequest}
+					diffState={selectedDiffState}
+					fileIndex={diffFileIndex}
+					view={effectiveDiffRenderView}
+					wrapMode={diffWrapMode}
+					paneWidth={contentWidth}
+					height={wideBodyHeight}
+					loadingIndicator={loadingIndicator}
+					scrollRef={diffScrollRef}
+				/>
 			) : isWideLayout && detailFullView ? (
 				<box flexGrow={1} flexDirection="column">
-					<scrollbox flexGrow={1}>
+					<scrollbox ref={detailScrollRef} focused flexGrow={1}>
 						<DetailsPane
 							pullRequest={selectedPullRequest}
 							contentWidth={fullscreenContentWidth}
@@ -1657,7 +2219,7 @@ export const App = () => {
 				</box>
 			) : detailFullView ? (
 				<box flexGrow={1} flexDirection="column">
-					<scrollbox flexGrow={1}>
+					<scrollbox ref={detailScrollRef} focused flexGrow={1}>
 						<DetailsPane
 							pullRequest={selectedPullRequest}
 							contentWidth={fullscreenContentWidth}
@@ -1681,7 +2243,7 @@ export const App = () => {
 				</>
 			)}
 
-			{isWideLayout && !detailFullView && !isInitialLoading ? (
+			{isWideLayout && !detailFullView && !diffFullView && !isInitialLoading ? (
 				<Divider width={contentWidth} junctionAt={dividerJunctionAt} junctionChar="┴" />
 			) : (
 				<Divider width={contentWidth} />
@@ -1694,6 +2256,7 @@ export const App = () => {
 						filterEditing={filterMode}
 						showFilterClear={filterMode || filterQuery.length > 0}
 						detailFullView={detailFullView}
+						diffFullView={diffFullView}
 						hasSelection={selectedPullRequest !== null}
 						hasError={pullRequestStatus === "error"}
 						isLoading={pullRequestStatus === "loading"}

@@ -11,6 +11,9 @@ interface GitHubListPullRequest {
 		readonly name: string
 		readonly color?: string | null
 	}[]
+	readonly additions: number
+	readonly deletions: number
+	readonly changedFiles: number
 	readonly isDraft: boolean
 	readonly reviewDecision: string
 	readonly statusCheckRollup: readonly {
@@ -38,7 +41,7 @@ interface GitHubViewer {
 }
 
 const searchJsonFields = "repository,number"
-const detailJsonFields = "number,title,body,labels,isDraft,reviewDecision,statusCheckRollup,state,createdAt,closedAt,url"
+const detailJsonFields = "number,title,body,labels,additions,deletions,changedFiles,isDraft,reviewDecision,statusCheckRollup,state,createdAt,closedAt,url"
 
 const normalizeDate = (value: string | null | undefined) => {
 	if (!value || value.startsWith("0001-01-01")) return null
@@ -126,6 +129,9 @@ const parsePullRequest = (repository: string, item: GitHubListPullRequest): Pull
 			name: label.name,
 			color: label.color ? `#${label.color}` : null,
 		})),
+		additions: item.additions,
+		deletions: item.deletions,
+		changedFiles: item.changedFiles,
 		state: item.state.toLowerCase() === "open" ? "open" : "closed",
 		reviewStatus: getReviewStatus(item),
 		checkStatus: checkInfo.checkStatus,
@@ -159,6 +165,7 @@ type GitHubError = CommandError | JsonParseError
 export class GitHubService extends Context.Service<GitHubService, {
 	readonly listOpenPullRequests: () => Effect.Effect<readonly PullRequestItem[], GitHubError>
 	readonly getAuthenticatedUser: () => Effect.Effect<string, GitHubError>
+	readonly getPullRequestDiff: (repository: string, number: number) => Effect.Effect<string, CommandError>
 	readonly toggleDraftStatus: (repository: string, number: number, isDraft: boolean) => Effect.Effect<void, CommandError>
 	readonly listRepoLabels: (repository: string) => Effect.Effect<readonly { readonly name: string; readonly color: string | null }[], GitHubError>
 	readonly addPullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, CommandError>
@@ -191,6 +198,11 @@ export class GitHubService extends Context.Service<GitHubService, {
 				return viewer.login
 			})
 
+			const getPullRequestDiff = Effect.fn("GitHubService.getPullRequestDiff")(function*(repository: string, number: number) {
+				const result = yield* command.run("gh", ["pr", "diff", String(number), "--repo", repository, "--color", "never"])
+				return result.stdout
+			})
+
 			const toggleDraftStatus = Effect.fn("GitHubService.toggleDraftStatus")(function*(repository: string, number: number, isDraft: boolean) {
 				yield* command.run("gh", ["pr", "ready", String(number), "--repo", repository, ...(isDraft ? [] : ["--undo"])])
 			})
@@ -213,6 +225,7 @@ export class GitHubService extends Context.Service<GitHubService, {
 			return GitHubService.of({
 				listOpenPullRequests,
 				getAuthenticatedUser,
+				getPullRequestDiff,
 				toggleDraftStatus,
 				listRepoLabels,
 				addPullRequestLabel,
