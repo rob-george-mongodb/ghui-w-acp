@@ -1,6 +1,6 @@
 import { parseColor, SyntaxStyle, TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
 import { useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import { useKeyboard, useTerminalDimensions } from "@opentui/react"
+import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
 import { Cause, Effect, Schedule } from "effect"
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult"
 import * as Atom from "effect/unstable/reactivity/Atom"
@@ -1528,6 +1528,7 @@ const LabelModal = ({
 }
 
 export const App = () => {
+	const renderer = useRenderer()
 	const { width, height } = useTerminalDimensions()
 	const pullRequestResult = useAtomValue(pullRequestsAtom)
 	const refreshPullRequestsAtom = useAtomRefresh(pullRequestsAtom)
@@ -1820,10 +1821,8 @@ export const App = () => {
 				setLabelModal(initialLabelModalState)
 				return
 			}
-			if (key.name === "q") {
-				process.exit(0)
-			}
-			process.exit(0)
+			renderer.destroy()
+			return
 		}
 
 		// Label modal takes priority over everything else

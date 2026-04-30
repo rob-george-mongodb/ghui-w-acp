@@ -11,6 +11,7 @@ const renderer = await createCliRenderer({
 	exitOnCtrlC: false,
 	screenMode: "alternate-screen",
 	externalOutputMode: "passthrough",
+	onDestroy: () => process.exit(0),
 })
 
 createRoot(renderer).render(
