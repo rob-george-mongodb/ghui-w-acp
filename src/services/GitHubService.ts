@@ -3,36 +3,57 @@ import { config } from "../config.js"
 import type { CheckItem, PullRequestItem } from "../domain.js"
 import { CommandRunner, type CommandError, type JsonParseError } from "./CommandRunner.js"
 
-interface GitHubListPullRequest {
+interface GitHubPullRequestNode {
 	readonly number: number
 	readonly title: string
 	readonly body: string
-	readonly labels: readonly {
-		readonly name: string
-		readonly color?: string | null
-	}[]
+	readonly labels: {
+		readonly nodes: readonly {
+			readonly name: string
+			readonly color?: string | null
+		}[]
+	}
 	readonly additions: number
 	readonly deletions: number
 	readonly changedFiles: number
 	readonly isDraft: boolean
-	readonly reviewDecision: string
-	readonly statusCheckRollup: readonly {
-		readonly name?: string | null
-		readonly context?: string | null
-		readonly status?: string | null
-		readonly conclusion?: string | null
-		readonly state?: string | null
-	}[]
+	readonly reviewDecision: string | null
+	readonly statusCheckRollup?: {
+		readonly contexts: {
+			readonly nodes: readonly GraphQLCheckContext[]
+		}
+	} | null
 	readonly state: string
 	readonly createdAt: string
 	readonly closedAt?: string | null
 	readonly url: string
-}
-
-interface GitHubSearchPullRequest {
-	readonly number: number
 	readonly repository: {
 		readonly nameWithOwner: string
+	}
+}
+
+type GraphQLCheckContext =
+	| {
+		readonly __typename: "CheckRun"
+		readonly name?: string | null
+		readonly status?: string | null
+		readonly conclusion?: string | null
+	}
+	| {
+		readonly __typename: "StatusContext"
+		readonly context?: string | null
+		readonly state?: string | null
+	}
+
+interface GraphQLSearchResponse {
+	readonly data: {
+		readonly search: {
+			readonly nodes: readonly (GitHubPullRequestNode | null)[]
+			readonly pageInfo: {
+				readonly hasNextPage: boolean
+				readonly endCursor: string | null
+			}
+		}
 	}
 }
 
@@ -40,15 +61,47 @@ interface GitHubViewer {
 	readonly login: string
 }
 
-const searchJsonFields = "repository,number"
-const detailJsonFields = "number,title,body,labels,additions,deletions,changedFiles,isDraft,reviewDecision,statusCheckRollup,state,createdAt,closedAt,url"
+const pullRequestSearchQuery = `
+query PullRequests($searchQuery: String!, $first: Int!, $after: String) {
+  search(query: $searchQuery, type: ISSUE, first: $first, after: $after) {
+    nodes {
+      ... on PullRequest {
+        number
+        title
+        body
+        isDraft
+        reviewDecision
+        additions
+        deletions
+        changedFiles
+        state
+        createdAt
+        closedAt
+        url
+        repository { nameWithOwner }
+        labels(first: 20) { nodes { name color } }
+        statusCheckRollup {
+          contexts(first: 100) {
+            nodes {
+              __typename
+              ... on CheckRun { name status conclusion }
+              ... on StatusContext { context state }
+            }
+          }
+        }
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+}
+`
 
 const normalizeDate = (value: string | null | undefined) => {
 	if (!value || value.startsWith("0001-01-01")) return null
 	return new Date(value)
 }
 
-const getReviewStatus = (item: GitHubListPullRequest): PullRequestItem["reviewStatus"] => {
+const getReviewStatus = (item: GitHubPullRequestNode): PullRequestItem["reviewStatus"] => {
 	if (item.isDraft) return "draft"
 	if (item.reviewDecision === "APPROVED") return "approved"
 	if (item.reviewDecision === "CHANGES_REQUESTED") return "changes"
@@ -73,8 +126,22 @@ const normalizeCheckConclusion = (raw?: string | null): CheckItem["conclusion"] 
 	return null
 }
 
-const getCheckInfo = (item: GitHubListPullRequest): Pick<PullRequestItem, "checkStatus" | "checkSummary" | "checks"> => {
-	if (item.statusCheckRollup.length === 0) {
+const getContextStatus = (context: GraphQLCheckContext): CheckItem["status"] => {
+	if (context.__typename === "CheckRun") return normalizeCheckStatus(context.status)
+	if (context.state === "PENDING") return "in_progress"
+	return "completed"
+}
+
+const getContextConclusion = (context: GraphQLCheckContext): CheckItem["conclusion"] => {
+	if (context.__typename === "CheckRun") return normalizeCheckConclusion(context.conclusion)
+	if (context.state === "SUCCESS") return "success"
+	if (context.state === "FAILURE" || context.state === "ERROR") return "failure"
+	return null
+}
+
+const getCheckInfo = (item: GitHubPullRequestNode): Pick<PullRequestItem, "checkStatus" | "checkSummary" | "checks"> => {
+	const contexts = item.statusCheckRollup?.contexts.nodes ?? []
+	if (contexts.length === 0) {
 		return { checkStatus: "none", checkSummary: null, checks: [] }
 	}
 
@@ -84,48 +151,46 @@ const getCheckInfo = (item: GitHubListPullRequest): Pick<PullRequestItem, "check
 	let failing = false
 	const checks: CheckItem[] = []
 
-	for (const check of item.statusCheckRollup) {
-		const name = check.name ?? check.context ?? "check"
+	for (const check of contexts) {
+		const name = check.__typename === "CheckRun" ? check.name ?? "check" : check.context ?? "check"
+		const status = getContextStatus(check)
+		const conclusion = getContextConclusion(check)
 
-		checks.push({
-			name,
-			status: normalizeCheckStatus(check.status),
-			conclusion: normalizeCheckConclusion(check.conclusion),
-		})
+		checks.push({ name, status, conclusion })
 
-		if (check.status === "COMPLETED") {
+		if (status === "completed") {
 			completed += 1
 		} else {
 			pending = true
 		}
 
-		if (check.conclusion === "SUCCESS" || check.conclusion === "NEUTRAL" || check.conclusion === "SKIPPED") {
+		if (conclusion === "success" || conclusion === "neutral" || conclusion === "skipped") {
 			successful += 1
-		} else if (check.conclusion && check.conclusion !== "SUCCESS") {
+		} else if (conclusion) {
 			failing = true
 		}
 	}
 
 	if (pending) {
-		return { checkStatus: "pending", checkSummary: `checks ${completed}/${item.statusCheckRollup.length}`, checks }
+		return { checkStatus: "pending", checkSummary: `checks ${completed}/${contexts.length}`, checks }
 	}
 
 	if (failing) {
-		return { checkStatus: "failing", checkSummary: `checks ${successful}/${item.statusCheckRollup.length}`, checks }
+		return { checkStatus: "failing", checkSummary: `checks ${successful}/${contexts.length}`, checks }
 	}
 
-	return { checkStatus: "passing", checkSummary: `checks ${successful}/${item.statusCheckRollup.length}`, checks }
+	return { checkStatus: "passing", checkSummary: `checks ${successful}/${contexts.length}`, checks }
 }
 
-const parsePullRequest = (repository: string, item: GitHubListPullRequest): PullRequestItem => {
+const parsePullRequest = (item: GitHubPullRequestNode): PullRequestItem => {
 	const checkInfo = getCheckInfo(item)
 
 	return {
-		repository,
+		repository: item.repository.nameWithOwner,
 		number: item.number,
 		title: item.title,
 		body: item.body,
-		labels: item.labels.map((label) => ({
+		labels: item.labels.nodes.map((label) => ({
 			name: label.name,
 			color: label.color ? `#${label.color}` : null,
 		})),
@@ -143,22 +208,7 @@ const parsePullRequest = (repository: string, item: GitHubListPullRequest): Pull
 	}
 }
 
-const searchOpenArgs = (author: string) => [
-	"search",
-	"prs",
-	"--author",
-	author,
-	"--state",
-	"open",
-	"--limit",
-	String(config.prFetchLimit),
-	"--sort",
-	"created",
-	"--order",
-	"desc",
-	"--json",
-	searchJsonFields,
-] as const
+const searchQuery = (author: string) => `author:${author} is:pr is:open sort:created-desc`
 
 type GitHubError = CommandError | JsonParseError
 
@@ -177,18 +227,27 @@ export class GitHubService extends Context.Service<GitHubService, {
 			const command = yield* CommandRunner
 
 			const listOpenPullRequests = Effect.fn("GitHubService.listOpenPullRequests")(function*() {
-				const searchResults = yield* command.runJson<readonly GitHubSearchPullRequest[]>("gh", [...searchOpenArgs(config.author)])
-				const pullRequests = yield* Effect.forEach(
-					searchResults,
-					Effect.fn("GitHubService.loadPullRequestDetail")(function*(searchResult) {
-						const repository = searchResult.repository.nameWithOwner
-						const pullRequest = yield* command.runJson<GitHubListPullRequest>("gh", [
-							"pr", "view", String(searchResult.number), "--repo", repository, "--json", detailJsonFields,
-						])
-						return parsePullRequest(repository, pullRequest)
-					}),
-					{ concurrency: 8 },
-				)
+				const pullRequests: PullRequestItem[] = []
+				let cursor: string | null = null
+
+				while (pullRequests.length < config.prFetchLimit) {
+					const pageSize = Math.min(100, config.prFetchLimit - pullRequests.length)
+					const response: GraphQLSearchResponse = yield* command.runJson<GraphQLSearchResponse>("gh", [
+						"api", "graphql",
+						"-f", `query=${pullRequestSearchQuery}`,
+						"-F", `searchQuery=${searchQuery(config.author)}`,
+						"-F", `first=${pageSize}`,
+						...(cursor ? ["-F", `after=${cursor}`] : []),
+					])
+
+					for (const node of response.data.search.nodes) {
+						if (node) pullRequests.push(parsePullRequest(node))
+					}
+
+					if (!response.data.search.pageInfo.hasNextPage) break
+					cursor = response.data.search.pageInfo.endCursor
+					if (!cursor) break
+				}
 
 				return pullRequests.sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
 			})

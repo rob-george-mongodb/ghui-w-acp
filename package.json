@@ -1,6 +1,6 @@
 {
 	"name": "@kitlangton/ghui",
-	"version": "0.1.4",
+	"version": "0.1.5",
 	"description": "Terminal UI for GitHub pull requests",
 	"type": "module",
 	"license": "MIT",

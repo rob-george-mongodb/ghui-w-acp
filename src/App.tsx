@@ -709,10 +709,6 @@ const FooterHints = ({
 			<TextLine>
 				<span fg={colors.count}>esc</span>
 				<span fg={colors.muted}> back  </span>
-				<span fg={colors.count}>j/k</span>
-				<span fg={colors.muted}> scroll  </span>
-				<span fg={colors.count}>gg/G</span>
-				<span fg={colors.muted}> top/bot  </span>
 				<span fg={colors.count}>v</span>
 				<span fg={colors.muted}> view  </span>
 				<span fg={colors.count}>w</span>
@@ -734,12 +730,6 @@ const FooterHints = ({
 			<TextLine>
 				<span fg={colors.count}>esc</span>
 				<span fg={colors.muted}> back  </span>
-				<span fg={colors.count}>j/k</span>
-				<span fg={colors.muted}> scroll  </span>
-				<span fg={colors.count}>gg/G</span>
-				<span fg={colors.muted}> top/bot  </span>
-				<span fg={colors.count}>ctrl-d/u</span>
-				<span fg={colors.muted}> page  </span>
 				<span fg={colors.count}>o</span>
 				<span fg={colors.muted}> open  </span>
 				<span fg={colors.count}>y</span>
@@ -1502,6 +1492,7 @@ export const App = () => {
 	const wideBodyHeight = Math.max(8, (height ?? 24) - 4)
 	const noticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const pendingGTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+	const diffPrefetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const detailScrollRef = useRef<ScrollBoxRenderable | null>(null)
 	const diffScrollRef = useRef<ScrollBoxRenderable | null>(null)
 	const headerFooterWidth = Math.max(24, contentWidth - 2)
@@ -1522,6 +1513,9 @@ export const App = () => {
 		}
 		if (pendingGTimeoutRef.current !== null) {
 			clearTimeout(pendingGTimeoutRef.current)
+		}
+		if (diffPrefetchTimeoutRef.current !== null) {
+			clearTimeout(diffPrefetchTimeoutRef.current)
 		}
 	}, [])
 
@@ -1652,6 +1646,22 @@ export const App = () => {
 				flashNotice(errorMessage(error))
 			})
 	}
+
+	useEffect(() => {
+		if (!selectedPullRequest || diffFullView) return
+		if (diffPrefetchTimeoutRef.current !== null) {
+			clearTimeout(diffPrefetchTimeoutRef.current)
+		}
+		diffPrefetchTimeoutRef.current = setTimeout(() => {
+			loadPullRequestDiff(selectedPullRequest)
+		}, 250)
+		return () => {
+			if (diffPrefetchTimeoutRef.current !== null) {
+				clearTimeout(diffPrefetchTimeoutRef.current)
+				diffPrefetchTimeoutRef.current = null
+			}
+		}
+	}, [selectedIndex, selectedPullRequest?.url, diffFullView])
 
 	const openDiffView = () => {
 		if (!selectedPullRequest) return
@@ -1883,7 +1893,7 @@ export const App = () => {
 			return
 		}
 
-		// Fullscreen detail mode: scroll with j/k, Ctrl-D/U, exit with Escape/Enter
+		// Fullscreen detail mode handles its own navigation keys.
 		if (detailFullView) {
 			if (key.name === "escape" || (key.name === "return" || key.name === "enter")) {
 				setDetailFullView(false)
