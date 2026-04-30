@@ -89,6 +89,41 @@ const patchFileName = (patch: string) => {
 	return nextLine ? unquoteDiffPath(nextLine.slice(4).trim()) : "diff"
 }
 
+const hunkHeaderPattern = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@(.*)$/
+
+const formatHunkRange = (start: string, count: number) => `${start},${count}`
+
+const normalizeHunkLineCounts = (patch: string) => {
+	const lines = patch.split("\n")
+	const normalized = [...lines]
+
+	for (let index = 0; index < lines.length; index++) {
+		const match = lines[index]!.match(hunkHeaderPattern)
+		if (!match) continue
+
+		let oldCount = 0
+		let newCount = 0
+		for (let lineIndex = index + 1; lineIndex < lines.length; lineIndex++) {
+			const line = lines[lineIndex]!
+			if (line.startsWith("@@ ") || line.startsWith("diff --git ")) break
+
+			const prefix = line[0]
+			if (prefix === " ") {
+				oldCount += 1
+				newCount += 1
+			} else if (prefix === "-") {
+				oldCount += 1
+			} else if (prefix === "+") {
+				newCount += 1
+			}
+		}
+
+		normalized[index] = `@@ -${formatHunkRange(match[1]!, oldCount)} +${formatHunkRange(match[3]!, newCount)} @@${match[5]!}`
+	}
+
+	return normalized.join("\n")
+}
+
 export const splitPatchFiles = (patch: string): readonly DiffFilePatch[] => {
 	const trimmed = patch.trimEnd()
 	if (trimmed.length === 0) return []
@@ -101,7 +136,7 @@ export const splitPatchFiles = (patch: string): readonly DiffFilePatch[] => {
 	return matches.map((match, index) => {
 		const start = match.index ?? 0
 		const end = index + 1 < matches.length ? matches[index + 1]!.index ?? trimmed.length : trimmed.length
-		const filePatch = trimmed.slice(start, end).trimEnd()
+		const filePatch = normalizeHunkLineCounts(trimmed.slice(start, end).trimEnd())
 		const name = patchFileName(filePatch)
 		return { name, filetype: filetypeForPath(name), patch: filePatch }
 	})

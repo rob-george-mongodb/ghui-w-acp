@@ -104,33 +104,16 @@ export const FooterHints = ({
 				</>
 			) : null}
 			<span fg={colors.count}>r</span>
-			<span fg={colors.muted}>{hasError ? " retry  " : " ref  "}</span>
+			<span fg={colors.muted}>{hasError ? " retry  " : " refresh  "}</span>
 			{hasSelection ? (
 				<>
-					<span fg={colors.count}>↑↓</span>
-					<span fg={colors.muted}> move  </span>
-				</>
-			) : null}
-			{hasSelection && detailFullView ? (
-				<>
-					<span fg={colors.count}>esc</span>
-					<span fg={colors.muted}> back  </span>
-				</>
-			) : hasSelection ? (
-				<>
-					<span fg={colors.count}>enter</span>
-					<span fg={colors.muted}> expand  </span>
-				</>
-			) : null}
-			{hasSelection ? (
-				<>
+					<span fg={colors.count}>s</span>
+					<span fg={colors.muted}> state  </span>
 					<span fg={colors.count}>d</span>
-					<span fg={colors.muted}> draft  </span>
-					<span fg={colors.count}>p</span>
 					<span fg={colors.muted}> diff  </span>
 					<span fg={colors.count}>l</span>
 					<span fg={colors.muted}> labels  </span>
-					<span fg={colors.count}>M</span>
+					<span fg={colors.count}>m</span>
 					<span fg={colors.muted}> merge  </span>
 					<span fg={colors.count}>o</span>
 					<span fg={colors.muted}> open  </span>

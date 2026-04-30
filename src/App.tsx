@@ -1024,7 +1024,7 @@ export const App = () => {
 			setDetailScrollOffset(0)
 			return
 		}
-		if (key.name === "p" && selectedPullRequest) {
+		if ((key.name === "d" || key.name === "p") && selectedPullRequest) {
 			openDiffView()
 			return
 		}
@@ -1041,7 +1041,7 @@ export const App = () => {
 			flashNotice(`Opened #${selectedPullRequest.number} in browser`)
 			return
 		}
-		if ((key.name === "d" || key.name === "D") && selectedPullRequest) {
+		if ((key.name === "s" || key.name === "S") && selectedPullRequest) {
 			const previousPullRequest = selectedPullRequest
 			const nextReviewStatus = selectedPullRequest.reviewStatus === "draft" ? "review" : "draft"
 			updatePullRequest(selectedPullRequest.url, (pullRequest) => ({
