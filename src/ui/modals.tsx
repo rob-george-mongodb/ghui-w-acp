@@ -25,6 +25,16 @@ export interface MergeModalState {
 	readonly error: string | null
 }
 
+export interface CloseModalState {
+	readonly open: boolean
+	readonly repository: string | null
+	readonly number: number | null
+	readonly title: string
+	readonly url: string | null
+	readonly running: boolean
+	readonly error: string | null
+}
+
 export interface ThemeModalState {
 	readonly open: boolean
 	readonly query: string
@@ -49,6 +59,16 @@ export const initialMergeModalState: MergeModalState = {
 	loading: false,
 	running: false,
 	info: null,
+	error: null,
+}
+
+export const initialCloseModalState: CloseModalState = {
+	open: false,
+	repository: null,
+	number: null,
+	title: "",
+	url: null,
+	running: false,
 	error: null,
 }
 
@@ -191,7 +211,7 @@ export const MergeModal = ({
 	const options = availableMergeActions(state.info)
 	const selectedIndex = options.length === 0 ? 0 : Math.max(0, Math.min(state.selectedIndex, options.length - 1))
 	const title = state.info ? `Merge  #${state.info.number}` : state.number ? `Merge  #${state.number}` : "Merge"
-	const rightText = state.running ? "running" : state.loading ? "loading" : state.info?.autoMergeEnabled ? "auto on" : "manual"
+	const rightText = state.running ? `${loadingIndicator} running` : state.loading ? `${loadingIndicator} loading` : state.info?.autoMergeEnabled ? "auto on" : "manual"
 	const headerGap = Math.max(1, contentWidth - title.length - rightText.length)
 	const repo = state.info?.repository ?? state.repository
 	const statusLine = state.info
@@ -256,6 +276,73 @@ export const MergeModal = ({
 					<span fg={colors.muted}> confirm  </span>
 					<span fg={colors.count}>esc</span>
 					<span fg={colors.muted}> close</span>
+				</TextLine>
+			</box>
+		</ModalFrame>
+	)
+}
+
+export const CloseModal = ({
+	state,
+	modalWidth,
+	modalHeight,
+	offsetLeft,
+	offsetTop,
+	loadingIndicator,
+}: {
+	state: CloseModalState
+	modalWidth: number
+	modalHeight: number
+	offsetLeft: number
+	offsetTop: number
+	loadingIndicator: string
+}) => {
+	const innerWidth = Math.max(16, modalWidth - 2)
+	const contentWidth = Math.max(14, innerWidth - 2)
+	const title = state.number ? `Close  #${state.number}` : "Close pull request"
+	const rightText = state.running ? `${loadingIndicator} closing` : "confirm"
+	const headerGap = Math.max(1, contentWidth - title.length - rightText.length)
+	const repo = state.repository ? shortRepoName(state.repository) : ""
+	const titleLines = [
+		fitCell(repo, contentWidth),
+		fitCell(state.title, contentWidth),
+	]
+	const bodyHeight = Math.max(1, modalHeight - 7)
+	const topRows = Math.max(0, Math.floor((bodyHeight - titleLines.length - 2) / 2))
+	const bottomRows = Math.max(0, bodyHeight - topRows - titleLines.length - 2)
+
+	return (
+		<ModalFrame left={offsetLeft} top={offsetTop} width={modalWidth} height={modalHeight} junctionRows={[2, modalHeight - 4]}>
+			<box height={1} paddingLeft={1} paddingRight={1}>
+				<TextLine>
+					<span fg={colors.error} attributes={TextAttributes.BOLD}>{title}</span>
+					<span fg={colors.muted}>{" ".repeat(headerGap)}</span>
+					<span fg={state.running ? colors.status.pending : colors.muted}>{rightText}</span>
+				</TextLine>
+			</box>
+			<box height={1} paddingLeft={1} paddingRight={1}>
+				<PlainLine text={fitCell("This will close the pull request without merging it.", contentWidth)} fg={colors.muted} />
+			</box>
+			<Divider width={innerWidth} />
+			<box height={bodyHeight} flexDirection="column" paddingLeft={1} paddingRight={1}>
+				{state.error ? (
+					<PlainLine text={fitCell(state.error, contentWidth)} fg={colors.error} />
+				) : (
+					<>
+						{Array.from({ length: topRows }, (_, index) => <box key={`top-${index}`} height={1} />)}
+						<PlainLine text={titleLines[0]!} fg={colors.muted} />
+						<PlainLine text={titleLines[1]!} fg={colors.text} bold />
+						{Array.from({ length: bottomRows }, (_, index) => <box key={`bottom-${index}`} height={1} />)}
+					</>
+				)}
+			</box>
+			<Divider width={innerWidth} />
+			<box height={1} paddingLeft={1} paddingRight={1}>
+				<TextLine>
+					<span fg={colors.count}>enter</span>
+					<span fg={colors.muted}> close  </span>
+					<span fg={colors.count}>esc</span>
+					<span fg={colors.muted}> cancel</span>
 				</TextLine>
 			</box>
 		</ModalFrame>

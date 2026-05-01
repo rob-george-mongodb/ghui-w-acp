@@ -60,6 +60,7 @@ You can also copy `.env.example` to `.env` and edit the values locally.
 - `d`: view diff
 - `s`: toggle draft or ready-for-review state
 - `m`: merge
+- `x`: close with confirmation
 - `t`: choose theme
 - `l`: manage labels
 - `o`: open PR in browser

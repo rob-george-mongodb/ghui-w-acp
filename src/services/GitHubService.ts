@@ -301,6 +301,7 @@ export class GitHubService extends Context.Service<GitHubService, {
 	readonly getPullRequestDiff: (repository: string, number: number) => Effect.Effect<string, CommandError>
 	readonly getPullRequestMergeInfo: (repository: string, number: number) => Effect.Effect<PullRequestMergeInfo, GitHubError>
 	readonly mergePullRequest: (repository: string, number: number, action: PullRequestMergeAction) => Effect.Effect<void, CommandError>
+	readonly closePullRequest: (repository: string, number: number) => Effect.Effect<void, CommandError>
 	readonly toggleDraftStatus: (repository: string, number: number, isDraft: boolean) => Effect.Effect<void, CommandError>
 	readonly listRepoLabels: (repository: string) => Effect.Effect<readonly { readonly name: string; readonly color: string | null }[], GitHubError>
 	readonly addPullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, CommandError>
@@ -399,6 +400,10 @@ export class GitHubService extends Context.Service<GitHubService, {
 				yield* command.run("gh", [...base, ...getMergeActionDefinition(action).cliArgs])
 			})
 
+			const closePullRequest = Effect.fn("GitHubService.closePullRequest")(function*(repository: string, number: number) {
+				yield* command.run("gh", ["pr", "close", String(number), "--repo", repository])
+			})
+
 			const toggleDraftStatus = Effect.fn("GitHubService.toggleDraftStatus")(function*(repository: string, number: number, isDraft: boolean) {
 				yield* command.run("gh", ["pr", "ready", String(number), "--repo", repository, ...(isDraft ? [] : ["--undo"])])
 			})
@@ -425,6 +430,7 @@ export class GitHubService extends Context.Service<GitHubService, {
 				getPullRequestDiff,
 				getPullRequestMergeInfo,
 				mergePullRequest,
+				closePullRequest,
 				toggleDraftStatus,
 				listRepoLabels,
 				addPullRequestLabel,

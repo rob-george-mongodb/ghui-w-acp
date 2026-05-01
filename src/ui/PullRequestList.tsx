@@ -45,22 +45,28 @@ const PullRequestRow = ({
 	numWidth: number
 	onSelect: () => void
 }) => {
-	const checkText = checkLabel(pullRequest)?.replace(/^checks\s+/, "") ?? ""
+	const isClosed = pullRequest.state === "closed"
+	const isMerged = pullRequest.state === "merged"
+	const isFinal = isClosed || isMerged
+	const checkText = isMerged ? "merged" : isClosed ? "closed" : checkLabel(pullRequest)?.replace(/^checks\s+/, "") ?? ""
 	const ageText = `${daysOpen(pullRequest.createdAt)}d`
 	const { reviewWidth, checkWidth, ageWidth, numberWidth, titleWidth } = getRowLayout(contentWidth, numWidth)
 	const rowWidth = reviewWidth + 1 + numberWidth + 1 + titleWidth + checkWidth + ageWidth
 	const fillerWidth = Math.max(0, contentWidth - rowWidth)
-	const indicatorColor = pullRequest.autoMergeEnabled ? colors.accent : statusColor(pullRequest.reviewStatus)
+	const indicatorColor = isMerged ? colors.status.passing : isClosed ? colors.muted : pullRequest.autoMergeEnabled ? colors.accent : statusColor(pullRequest.reviewStatus)
+	const rowTextColor = selected ? colors.selectedText : isFinal ? colors.muted : colors.text
+	const numberColor = selected ? colors.accent : isFinal ? colors.muted : colors.count
+	const checkColor = isMerged ? colors.status.passing : isClosed ? colors.muted : statusColor(pullRequest.checkStatus)
 
 	return (
 		<box height={1} onMouseDown={onSelect}>
-			<TextLine fg={selected ? colors.selectedText : colors.text} bg={selected ? colors.selectedBg : undefined}>
+			<TextLine fg={rowTextColor} bg={selected ? colors.selectedBg : undefined}>
 				<span fg={indicatorColor}>{fitCell(reviewIcon(pullRequest), reviewWidth)}</span>
 				<span> </span>
-				<span fg={selected ? colors.accent : colors.count}>{fitCell(`#${pullRequest.number}`, numberWidth, "right")}</span>
+				<span fg={numberColor}>{fitCell(`#${pullRequest.number}`, numberWidth, "right")}</span>
 				<span> </span>
 				<span>{fitCell(pullRequest.title, titleWidth)}</span>
-				<span fg={statusColor(pullRequest.checkStatus)}>{fitCell(checkText, checkWidth, "right")}</span>
+				<span fg={checkColor}>{fitCell(checkText, checkWidth, "right")}</span>
 				<span fg={colors.muted}>{fitCell(ageText, ageWidth, "right")}</span>
 				{fillerWidth > 0 ? <span>{" ".repeat(fillerWidth)}</span> : null}
 			</TextLine>

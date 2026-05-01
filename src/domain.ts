@@ -1,4 +1,4 @@
-export type PullRequestState = "open" | "closed"
+export type PullRequestState = "open" | "closed" | "merged"
 
 export type CheckConclusion = "success" | "failure" | "neutral" | "skipped" | "cancelled" | "timed_out"
 

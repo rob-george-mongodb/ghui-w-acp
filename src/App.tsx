@@ -17,7 +17,7 @@ import { pullRequestDiffKey, splitPatchFiles, type PullRequestDiffState } from "
 import { DetailBody, DetailHeader, DetailPlaceholder, DetailsPane, getDetailBodyHeight, getDetailHeaderHeight, getDetailJunctionRows, getDetailsPaneHeight, LoadingPane, type DetailPlaceholderContent } from "./ui/DetailsPane.js"
 import { FooterHints, type RetryProgress } from "./ui/FooterHints.js"
 import { Divider, fitCell, PlainLine, SeparatorColumn } from "./ui/primitives.js"
-import { initialLabelModalState, initialMergeModalState, initialThemeModalState, LabelModal, MergeModal, ThemeModal } from "./ui/modals.js"
+import { CloseModal, initialCloseModalState, initialLabelModalState, initialMergeModalState, initialThemeModalState, LabelModal, MergeModal, ThemeModal } from "./ui/modals.js"
 import { groupBy, reviewLabel } from "./ui/pullRequests.js"
 import { PullRequestDiffPane } from "./ui/PullRequestDiffPane.js"
 import { PullRequestList } from "./ui/PullRequestList.js"
@@ -82,11 +82,13 @@ const diffWrapModeAtom = Atom.make<"none" | "word">("none").pipe(Atom.keepAlive)
 const pullRequestDiffCacheAtom = Atom.make<Record<string, PullRequestDiffState>>({}).pipe(Atom.keepAlive)
 
 const labelModalAtom = Atom.make(initialLabelModalState).pipe(Atom.keepAlive)
+const closeModalAtom = Atom.make(initialCloseModalState).pipe(Atom.keepAlive)
 const mergeModalAtom = Atom.make(initialMergeModalState).pipe(Atom.keepAlive)
 const themeIdAtom = Atom.make<ThemeId>(initialThemeId).pipe(Atom.keepAlive)
 const themeModalAtom = Atom.make(initialThemeModalState).pipe(Atom.keepAlive)
 const labelCacheAtom = Atom.make<Record<string, readonly PullRequestLabel[]>>({}).pipe(Atom.keepAlive)
 const pullRequestOverridesAtom = Atom.make<Record<string, PullRequestItem>>({}).pipe(Atom.keepAlive)
+const recentlyCompletedPullRequestsAtom = Atom.make<Record<string, PullRequestItem>>({}).pipe(Atom.keepAlive)
 const usernameAtom = githubRuntime.atom(
 	config.author === "@me"
 		? GitHubService.use((github) => github.getAuthenticatedUser())
@@ -116,6 +118,9 @@ const getPullRequestMergeInfoAtom = githubRuntime.fn<{ readonly repository: stri
 )
 const mergePullRequestAtom = githubRuntime.fn<{ readonly repository: string; readonly number: number; readonly action: PullRequestMergeAction }>()((input) =>
 	GitHubService.use((github) => github.mergePullRequest(input.repository, input.number, input.action))
+)
+const closePullRequestAtom = githubRuntime.fn<{ readonly repository: string; readonly number: number }>()((input) =>
+	GitHubService.use((github) => github.closePullRequest(input.repository, input.number))
 )
 
 const deleteLastWord = (value: string) => value.replace(/\s*\S+\s*$/, "")
@@ -262,6 +267,7 @@ export const App = () => {
 	const [diffWrapMode, setDiffWrapMode] = useAtom(diffWrapModeAtom)
 	const [pullRequestDiffCache, setPullRequestDiffCache] = useAtom(pullRequestDiffCacheAtom)
 	const [labelModal, setLabelModal] = useAtom(labelModalAtom)
+	const [closeModal, setCloseModal] = useAtom(closeModalAtom)
 	const [mergeModal, setMergeModal] = useAtom(mergeModalAtom)
 	const [themeId, setThemeId] = useAtom(themeIdAtom)
 	const [themeModal, setThemeModal] = useAtom(themeModalAtom)
@@ -272,8 +278,11 @@ export const App = () => {
 	themeModalRef.current = themeModal
 	const [labelCache, setLabelCache] = useAtom(labelCacheAtom)
 	const [pullRequestOverrides, setPullRequestOverrides] = useAtom(pullRequestOverridesAtom)
+	const [recentlyCompletedPullRequests, setRecentlyCompletedPullRequests] = useAtom(recentlyCompletedPullRequestsAtom)
 	const retryProgress = useAtomValue(retryProgressAtom)
 	const [loadingFrame, setLoadingFrame] = useState(0)
+	const [refreshCompletionMessage, setRefreshCompletionMessage] = useState<string | null>(null)
+	const [refreshStartedAt, setRefreshStartedAt] = useState<number | null>(null)
 	const [terminalFocused, setTerminalFocused] = useState(true)
 	const usernameResult = useAtomValue(usernameAtom)
 	const loadRepoLabels = useAtomSet(listRepoLabelsAtom, { mode: "promise" })
@@ -284,6 +293,7 @@ export const App = () => {
 	const getPullRequestDiff = useAtomSet(getPullRequestDiffAtom, { mode: "promise" })
 	const getPullRequestMergeInfo = useAtomSet(getPullRequestMergeInfoAtom, { mode: "promise" })
 	const mergePullRequest = useAtomSet(mergePullRequestAtom, { mode: "promise" })
+	const closePullRequest = useAtomSet(closePullRequestAtom, { mode: "promise" })
 	const terminalWidth = width ?? 100
 	const terminalHeight = height ?? 24
 	const contentWidth = Math.max(1, terminalWidth)
@@ -301,6 +311,7 @@ export const App = () => {
 	const pendingGTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const diffPrefetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 	const detailHydrationRef = useRef<number | null>(null)
+	const refreshGenerationRef = useRef(0)
 	const lastPullRequestRefreshAtRef = useRef(0)
 	const terminalFocusedRef = useRef(true)
 	const terminalWasBlurredRef = useRef(false)
@@ -338,10 +349,19 @@ export const App = () => {
 	}, [])
 
 	const pullRequestLoad = AsyncResult.getOrElse(pullRequestResult, () => null)
-	const pullRequests = useMemo(
-		() => pullRequestLoad?.data.map((pullRequest) => pullRequestOverrides[pullRequest.url] ?? pullRequest) ?? [],
-		[pullRequestLoad?.data, pullRequestOverrides],
-	)
+	const pullRequests = useMemo(() => {
+		const source = pullRequestLoad?.data ?? []
+		const seenUrls = new Set<string>()
+		const openPullRequests = source.map((pullRequest) => {
+			seenUrls.add(pullRequest.url)
+			return recentlyCompletedPullRequests[pullRequest.url] ?? pullRequestOverrides[pullRequest.url] ?? pullRequest
+		})
+
+		return [
+			...openPullRequests,
+			...Object.values(recentlyCompletedPullRequests).filter((pullRequest) => !seenUrls.has(pullRequest.url)),
+		]
+	}, [pullRequestLoad?.data, pullRequestOverrides, recentlyCompletedPullRequests])
 	const pullRequestStatus: LoadStatus = pullRequestResult.waiting && pullRequestLoad === null
 		? "loading"
 		: AsyncResult.isFailure(pullRequestResult)
@@ -399,8 +419,14 @@ export const App = () => {
 		setPullRequestOverrides((current) => ({ ...current, [url]: transform(pullRequest) }))
 	}
 	const refreshPullRequests = (message?: string) => {
+		refreshGenerationRef.current += 1
+		setPullRequestOverrides({})
+		if (message) {
+			setNotice(null)
+			setRefreshCompletionMessage(message)
+			setRefreshStartedAt(lastPullRequestRefreshAtRef.current)
+		}
 		refreshPullRequestsAtom()
-		if (message) flashNotice(message)
 	}
 	refreshPullRequestsRef.current = refreshPullRequests
 	maybeRefreshPullRequestsRef.current = (minimumAgeMs) => {
@@ -416,6 +442,21 @@ export const App = () => {
 			lastPullRequestRefreshAtRef.current = fetchedAt
 		}
 	}, [pullRequestLoad?.fetchedAt])
+
+	useEffect(() => {
+		if (!refreshCompletionMessage || refreshStartedAt === null) return
+		const fetchedAt = pullRequestLoad?.fetchedAt?.getTime()
+		const isHydratingDetails = pullRequestStatus === "ready" && pullRequests.some((pullRequest) => pullRequest.state === "open" && !pullRequest.detailLoaded)
+		if (pullRequestStatus === "ready" && fetchedAt !== undefined && fetchedAt !== refreshStartedAt && !isHydratingDetails) {
+			flashNotice(`✓ ${refreshCompletionMessage}`)
+			setRefreshCompletionMessage(null)
+			setRefreshStartedAt(null)
+		} else if (pullRequestStatus === "error") {
+			flashNotice("Refresh failed")
+			setRefreshCompletionMessage(null)
+			setRefreshStartedAt(null)
+		}
+	}, [refreshCompletionMessage, refreshStartedAt, pullRequestStatus, pullRequestLoad?.fetchedAt, pullRequests])
 
 	useEffect(() => {
 		const handleFocus = () => {
@@ -464,8 +505,9 @@ export const App = () => {
 	const selectedPullRequest = visiblePullRequests[selectedIndex] ?? null
 	const selectedDiffState = selectedPullRequest ? pullRequestDiffCache[pullRequestDiffKey(selectedPullRequest)] : undefined
 	const effectiveDiffRenderView = contentWidth >= 100 ? diffRenderView : "unified"
-	const isHydratingPullRequestDetails = pullRequestStatus === "ready" && pullRequests.some((pullRequest) => !pullRequest.detailLoaded)
-	const hasActiveLoadingIndicator = pullRequestStatus === "loading" || isHydratingPullRequestDetails || labelModal.loading || mergeModal.loading || mergeModal.running || selectedDiffState?.status === "loading"
+	const isHydratingPullRequestDetails = pullRequestStatus === "ready" && pullRequests.some((pullRequest) => pullRequest.state === "open" && !pullRequest.detailLoaded)
+	const isRefreshingPullRequests = pullRequestResult.waiting && pullRequestLoad !== null
+	const hasActiveLoadingIndicator = pullRequestResult.waiting || isHydratingPullRequestDetails || labelModal.loading || closeModal.running || mergeModal.loading || mergeModal.running || selectedDiffState?.status === "loading"
 	const loadingIndicator = LOADING_FRAMES[loadingFrame % LOADING_FRAMES.length]!
 
 	useEffect(() => {
@@ -480,9 +522,11 @@ export const App = () => {
 		const fetchedAt = pullRequestLoad?.fetchedAt?.getTime()
 		if (pullRequestStatus !== "ready" || fetchedAt === undefined) return
 		if (detailHydrationRef.current === fetchedAt) return
-		if (!pullRequests.some((pullRequest) => !pullRequest.detailLoaded)) return
+		if (!pullRequests.some((pullRequest) => pullRequest.state === "open" && !pullRequest.detailLoaded)) return
 		detailHydrationRef.current = fetchedAt
+		const generation = refreshGenerationRef.current
 		void loadPullRequestDetails().then((details) => {
+			if (generation !== refreshGenerationRef.current) return
 			setPullRequestOverrides((current) => {
 				const next = { ...current }
 				for (const detail of details) {
@@ -560,8 +604,53 @@ export const App = () => {
 			.catch((error) => flashNotice(errorMessage(error)))
 	}
 
+	const openCloseModal = () => {
+		if (!selectedPullRequest || selectedPullRequest.state !== "open") return
+		setLabelModal(initialLabelModalState)
+		setMergeModal(initialMergeModalState)
+		setThemeModal(initialThemeModalState)
+		setCloseModal({
+			open: true,
+			repository: selectedPullRequest.repository,
+			number: selectedPullRequest.number,
+			title: selectedPullRequest.title,
+			url: selectedPullRequest.url,
+			running: false,
+			error: null,
+		})
+	}
+
+	const confirmClosePullRequest = () => {
+		if (!closeModal.repository || closeModal.number === null || !closeModal.url || closeModal.running) return
+		const { repository, number, url } = closeModal
+		const targetPullRequest = pullRequests.find((pullRequest) => pullRequest.url === url)
+		const previousPullRequest = targetPullRequest ?? null
+
+		setCloseModal((current) => ({ ...current, running: true, error: null }))
+		void closePullRequest({ repository, number })
+			.then(() => {
+				if (previousPullRequest) {
+					setRecentlyCompletedPullRequests((current) => ({
+						...current,
+						[previousPullRequest.url]: {
+							...previousPullRequest,
+							state: "closed",
+							autoMergeEnabled: false,
+						},
+					}))
+				}
+				setCloseModal(initialCloseModalState)
+				refreshPullRequests(`Closed #${number}`)
+			})
+			.catch((error) => {
+				setCloseModal((current) => ({ ...current, running: false, error: errorMessage(error) }))
+				flashNotice(errorMessage(error))
+			})
+	}
+
 	const openThemeModal = () => {
 		setLabelModal(initialLabelModalState)
+		setCloseModal(initialCloseModalState)
 		setMergeModal(initialMergeModalState)
 		setThemeModal({
 			open: true,
@@ -622,6 +711,7 @@ export const App = () => {
 
 	const openLabelModal = () => {
 		if (!selectedPullRequest) return
+		setCloseModal(initialCloseModalState)
 		setMergeModal(initialMergeModalState)
 		setThemeModal(initialThemeModalState)
 		const repository = selectedPullRequest.repository
@@ -652,6 +742,7 @@ export const App = () => {
 
 	const openMergeModal = () => {
 		if (!selectedPullRequest) return
+		setCloseModal(initialCloseModalState)
 		setThemeModal(initialThemeModalState)
 		const repository = selectedPullRequest.repository
 		const number = selectedPullRequest.number
@@ -702,6 +793,16 @@ export const App = () => {
 		setMergeModal((current) => ({ ...current, running: true, error: null }))
 		void mergePullRequest({ repository, number, action: option.action })
 			.then(() => {
+				if (option.refreshOnSuccess && previousPullRequest) {
+					setRecentlyCompletedPullRequests((current) => ({
+						...current,
+						[previousPullRequest.url]: {
+							...previousPullRequest,
+							state: "merged",
+							autoMergeEnabled: false,
+						},
+					}))
+				}
 				setMergeModal(initialMergeModalState)
 				if (option.refreshOnSuccess) {
 					refreshPullRequests(`${option.pastTense} #${number}`)
@@ -758,6 +859,10 @@ export const App = () => {
 				closeThemeModal(false)
 				return
 			}
+			if (closeModal.open) {
+				setCloseModal(initialCloseModalState)
+				return
+			}
 			if (mergeModal.open) {
 				setMergeModal(initialMergeModalState)
 				return
@@ -806,6 +911,18 @@ export const App = () => {
 			}
 			if (themeModal.filterMode && !key.ctrl && !key.meta && key.sequence.length === 1 && key.name !== "return") {
 				editThemeQuery((query) => query + key.sequence)
+				return
+			}
+			return
+		}
+
+		if (closeModal.open) {
+			if (key.name === "escape") {
+				setCloseModal(initialCloseModalState)
+				return
+			}
+			if (key.name === "return" || key.name === "enter") {
+				confirmClosePullRequest()
 				return
 			}
 			return
@@ -1110,7 +1227,7 @@ export const App = () => {
 			return
 		}
 		if (key.name === "r") {
-			refreshPullRequests("Refreshing pull requests...")
+			refreshPullRequests("Refreshed")
 			return
 		}
 		if (
@@ -1203,6 +1320,10 @@ export const App = () => {
 			openDiffView()
 			return
 		}
+		if (key.name === "x" && selectedPullRequest?.state === "open") {
+			openCloseModal()
+			return
+		}
 		if (key.name === "l" && selectedPullRequest) {
 			openLabelModal()
 			return
@@ -1278,6 +1399,10 @@ export const App = () => {
 	const labelModalHeight = Math.min(20, terminalHeight - 4)
 	const labelModalLeft = Math.floor((contentWidth - labelModalWidth) / 2)
 	const labelModalTop = Math.floor((terminalHeight - labelModalHeight) / 2)
+	const closeModalWidth = Math.min(68, Math.max(46, contentWidth - 12))
+	const closeModalHeight = Math.min(12, terminalHeight - 4)
+	const closeModalLeft = Math.floor((contentWidth - closeModalWidth) / 2)
+	const closeModalTop = Math.floor((terminalHeight - closeModalHeight) / 2)
 	const mergeModalWidth = Math.min(68, Math.max(46, contentWidth - 12))
 	const mergeModalHeight = Math.min(16, terminalHeight - 4)
 	const mergeModalLeft = Math.floor((contentWidth - mergeModalWidth) / 2)
@@ -1391,8 +1516,9 @@ export const App = () => {
 						detailFullView={detailFullView}
 						diffFullView={diffFullView}
 						hasSelection={selectedPullRequest !== null}
+						canCloseSelection={selectedPullRequest?.state === "open"}
 						hasError={pullRequestStatus === "error"}
-						isLoading={pullRequestStatus === "loading"}
+						isLoading={pullRequestStatus === "loading" || isRefreshingPullRequests || isHydratingPullRequestDetails || closeModal.running || mergeModal.running}
 						loadingIndicator={loadingIndicator}
 						retryProgress={retryProgress}
 					/>
@@ -1406,6 +1532,16 @@ export const App = () => {
 					modalHeight={labelModalHeight}
 					offsetLeft={labelModalLeft}
 					offsetTop={labelModalTop}
+					loadingIndicator={loadingIndicator}
+				/>
+			) : null}
+			{closeModal.open ? (
+				<CloseModal
+					state={closeModal}
+					modalWidth={closeModalWidth}
+					modalHeight={closeModalHeight}
+					offsetLeft={closeModalLeft}
+					offsetTop={closeModalTop}
 					loadingIndicator={loadingIndicator}
 				/>
 			) : null}

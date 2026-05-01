@@ -12,6 +12,7 @@ export const FooterHints = ({
 	detailFullView,
 	diffFullView,
 	hasSelection,
+	canCloseSelection,
 	hasError,
 	isLoading,
 	loadingIndicator,
@@ -22,6 +23,7 @@ export const FooterHints = ({
 	detailFullView: boolean
 	diffFullView: boolean
 	hasSelection: boolean
+	canCloseSelection: boolean
 	hasError: boolean
 	isLoading: boolean
 	loadingIndicator: string
@@ -117,6 +119,12 @@ export const FooterHints = ({
 					<span fg={colors.muted}> labels  </span>
 					<span fg={colors.count}>m</span>
 					<span fg={colors.muted}> merge  </span>
+					{canCloseSelection ? (
+						<>
+							<span fg={colors.count}>x</span>
+							<span fg={colors.muted}> close  </span>
+						</>
+					) : null}
 					<span fg={colors.count}>o</span>
 					<span fg={colors.muted}> open  </span>
 					<span fg={colors.count}>y</span>

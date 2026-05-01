@@ -18,6 +18,8 @@ export const checkLabel = (pullRequest: PullRequestItem) => pullRequest.checkSum
 export const statusColor = (status: PullRequestItem["reviewStatus"] | PullRequestItem["checkStatus"]) => colors.status[status]
 
 export const reviewIcon = (pullRequest: PullRequestItem) => {
+	if (pullRequest.state === "merged") return "✓"
+	if (pullRequest.state === "closed") return "×"
 	if (pullRequest.autoMergeEnabled) return "↻"
 	if (pullRequest.reviewStatus === "draft") return "◌"
 	if (pullRequest.reviewStatus === "approved") return "✓"
