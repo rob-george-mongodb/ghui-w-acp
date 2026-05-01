@@ -1,5 +1,8 @@
 import { Schema } from "effect"
 
+export const LoadStatus = Schema.Literals(["loading", "ready", "error"])
+export type LoadStatus = Schema.Schema.Type<typeof LoadStatus>
+
 export const PullRequestState = Schema.Literals(["open", "closed", "merged"])
 export type PullRequestState = Schema.Schema.Type<typeof PullRequestState>
 

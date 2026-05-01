@@ -1,11 +1,10 @@
 import { TextAttributes } from "@opentui/core"
-import type { PullRequestItem } from "../domain.js"
+import type { LoadStatus, PullRequestItem } from "../domain.js"
 import { daysOpen } from "../date.js"
 import { colors } from "./colors.js"
 import { fitCell, PlainLine, SectionTitle, TextLine } from "./primitives.js"
 import { checkLabel, repoColor, reviewIcon, statusColor } from "./pullRequests.js"
 
-export type LoadStatus = "loading" | "ready" | "error"
 export type PullRequestGroups = Array<[string, PullRequestItem[]]>
 
 const GROUP_ICON = "◆"

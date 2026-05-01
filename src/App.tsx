@@ -6,7 +6,7 @@ import * as AsyncResult from "effect/unstable/reactivity/AsyncResult"
 import * as Atom from "effect/unstable/reactivity/Atom"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { config } from "./config.js"
-import { pullRequestQueueLabels, pullRequestQueueModes, type CreatePullRequestCommentInput, type DiffCommentSide, type PullRequestItem, type PullRequestLabel, type PullRequestMergeAction, type PullRequestQueueMode, type PullRequestReviewComment } from "./domain.js"
+import { pullRequestQueueLabels, pullRequestQueueModes, type CreatePullRequestCommentInput, type DiffCommentSide, type LoadStatus, type PullRequestItem, type PullRequestLabel, type PullRequestMergeAction, type PullRequestQueueMode, type PullRequestReviewComment } from "./domain.js"
 import { formatShortDate, formatTimestamp } from "./date.js"
 import { availableMergeActions, mergeInfoFromPullRequest } from "./mergeActions.js"
 import { Observability } from "./observability.js"
@@ -26,7 +26,6 @@ import { PullRequestList } from "./ui/PullRequestList.js"
 const githubRuntime = Atom.runtime(GitHubService.layer.pipe(Layer.provideMerge(Observability.layer)))
 const initialThemeId = await Effect.runPromise(loadStoredThemeId)
 
-type LoadStatus = "loading" | "ready" | "error"
 
 interface PullRequestLoad {
 	readonly queueMode: PullRequestQueueMode
