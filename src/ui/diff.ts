@@ -1,4 +1,5 @@
 import { parseColor, SyntaxStyle } from "@opentui/core"
+import { Data } from "effect"
 import type { DiffCommentSide, PullRequestItem, PullRequestReviewComment } from "../domain.js"
 import { colors } from "./colors.js"
 
@@ -35,10 +36,13 @@ export type StackedDiffCommentAnchor = DiffCommentAnchor & {
 	readonly localRenderLine: number
 }
 
-export type PullRequestDiffState =
-	| { readonly status: "loading" }
-	| { readonly status: "ready"; readonly patch: string; readonly files: readonly DiffFilePatch[] }
-	| { readonly status: "error"; readonly error: string }
+export type PullRequestDiffState = Data.TaggedEnum<{
+	Loading: {}
+	Ready: { readonly patch: string; readonly files: readonly DiffFilePatch[] }
+	Error: { readonly error: string }
+}>
+
+export const PullRequestDiffState = Data.taggedEnum<PullRequestDiffState>()
 
 export const createDiffSyntaxStyle = () => SyntaxStyle.fromStyles({
 	keyword: { fg: parseColor(colors.accent), bold: true },

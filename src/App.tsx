@@ -14,7 +14,7 @@ import { GitHubService } from "./services/GitHubService.js"
 import { loadStoredThemeId, saveStoredThemeId } from "./themeStore.js"
 import { colors, filterThemeDefinitions, setActiveTheme, themeDefinitions, type ThemeId } from "./ui/colors.js"
 import { backspace as editorBackspace, deleteForward as editorDeleteForward, deleteToLineEnd, deleteToLineStart, deleteWordBackward, deleteWordForward, insertText, moveLeft as editorMoveLeft, moveLineEnd, moveLineStart, moveRight as editorMoveRight, moveVertically, moveWordBackward, moveWordForward, type CommentEditorValue } from "./ui/commentEditor.js"
-import { buildStackedDiffFiles, diffCommentAnchorKey, diffCommentLocationKey, getStackedDiffCommentAnchors, nearestDiffCommentAnchorIndex, pullRequestDiffKey, safeDiffFileIndex, scrollTopForVisibleLine, splitPatchFiles, type DiffCommentAnchor, type PullRequestDiffState, type StackedDiffCommentAnchor } from "./ui/diff.js"
+import { buildStackedDiffFiles, diffCommentAnchorKey, diffCommentLocationKey, getStackedDiffCommentAnchors, nearestDiffCommentAnchorIndex, PullRequestDiffState, pullRequestDiffKey, safeDiffFileIndex, scrollTopForVisibleLine, splitPatchFiles, type DiffCommentAnchor, type StackedDiffCommentAnchor } from "./ui/diff.js"
 import { DetailBody, DetailHeader, DetailPlaceholder, DetailsPane, getDetailBodyHeight, getDetailHeaderHeight, getDetailJunctionRows, getDetailsPaneHeight, LoadingPane, type DetailPlaceholderContent } from "./ui/DetailsPane.js"
 import { FooterHints, type RetryProgress } from "./ui/FooterHints.js"
 import { Divider, fitCell, PlainLine, SeparatorColumn } from "./ui/primitives.js"
@@ -71,6 +71,7 @@ const PR_FETCH_RETRIES = 6
 const FOCUS_RETURN_REFRESH_MIN_MS = 60_000
 const FOCUSED_IDLE_REFRESH_MS = 5 * 60_000
 const AUTO_REFRESH_JITTER_MS = 10_000
+const DIFF_STICKY_HEADER_LINES = 2
 const LOADING_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const
 
 const mergeCachedDetails = (fresh: readonly PullRequestItem[], cached: readonly PullRequestItem[] | undefined) => {
@@ -137,6 +138,7 @@ const detailFullViewAtom = Atom.make(false).pipe(Atom.keepAlive)
 const detailScrollOffsetAtom = Atom.make(0).pipe(Atom.keepAlive)
 const diffFullViewAtom = Atom.make(false).pipe(Atom.keepAlive)
 const diffFileIndexAtom = Atom.make(0).pipe(Atom.keepAlive)
+const diffScrollTopAtom = Atom.make(0).pipe(Atom.keepAlive)
 const diffRenderViewAtom = Atom.make<"unified" | "split">("split").pipe(Atom.keepAlive)
 const diffWrapModeAtom = Atom.make<"none" | "word">("none").pipe(Atom.keepAlive)
 const diffCommentModeAtom = Atom.make(false).pipe(Atom.keepAlive)
@@ -394,6 +396,7 @@ export const App = () => {
 	const [_detailScrollOffset, setDetailScrollOffset] = useAtom(detailScrollOffsetAtom)
 	const [diffFullView, setDiffFullView] = useAtom(diffFullViewAtom)
 	const [diffFileIndex, setDiffFileIndex] = useAtom(diffFileIndexAtom)
+	const [diffScrollTop, setDiffScrollTop] = useAtom(diffScrollTopAtom)
 	const [diffRenderView, setDiffRenderView] = useAtom(diffRenderViewAtom)
 	const [diffWrapMode, setDiffWrapMode] = useAtom(diffWrapModeAtom)
 	const [diffCommentMode, setDiffCommentMode] = useAtom(diffCommentModeAtom)
@@ -565,14 +568,9 @@ export const App = () => {
 	const selectedPullRequest = visiblePullRequests[selectedIndex] ?? null
 	const selectedDiffState = selectedPullRequest ? pullRequestDiffCache[pullRequestDiffKey(selectedPullRequest)] : undefined
 	const effectiveDiffRenderView = contentWidth >= 100 ? diffRenderView : "unified"
-	const readyDiffFiles = selectedDiffState?.status === "ready" ? selectedDiffState.files : []
+	const readyDiffFiles = selectedDiffState?._tag === "Ready" ? selectedDiffState.files : []
 	const stackedDiffFiles = useMemo(() => buildStackedDiffFiles(readyDiffFiles, effectiveDiffRenderView, diffWrapMode, contentWidth), [readyDiffFiles, effectiveDiffRenderView, diffWrapMode, contentWidth])
 	const selectedDiffKey = selectedPullRequest ? pullRequestDiffKey(selectedPullRequest) : null
-	const selectedDiffCommentCount = useMemo(() => selectedDiffKey
-		? Object.entries(diffCommentThreads)
-			.filter(([key, comments]) => key.startsWith(`${selectedDiffKey}:`) && comments.length > 0)
-			.reduce((count, [, comments]) => count + comments.length, 0)
-		: 0, [diffCommentThreads, selectedDiffKey])
 	const diffCommentAnchors = useMemo(
 		() => diffFullView ? getStackedDiffCommentAnchors(stackedDiffFiles, effectiveDiffRenderView, diffWrapMode, contentWidth) : [],
 		[diffFullView, stackedDiffFiles, effectiveDiffRenderView, diffWrapMode, contentWidth],
@@ -790,7 +788,7 @@ export const App = () => {
 	}, [diffCommentMode, selectedDiffCommentAnchor?.renderLine, selectedDiffCommentAnchor?.localRenderLine, selectedDiffCommentAnchor?.side, selectedDiffCommentAnchor?.fileIndex, diffLineColorContextKey, effectiveDiffRenderView, diffCommentAnchors, diffCommentThreads])
 	const isHydratingPullRequestDetails = pullRequestStatus === "ready" && pullRequests.some((pullRequest) => pullRequest.state === "open" && !pullRequest.detailLoaded)
 	const isRefreshingPullRequests = pullRequestResult.waiting && pullRequestLoad !== null
-	const hasActiveLoadingIndicator = pullRequestResult.waiting || isHydratingPullRequestDetails || labelModal.loading || closeModal.running || mergeModal.loading || mergeModal.running || selectedDiffState?.status === "loading"
+	const hasActiveLoadingIndicator = pullRequestResult.waiting || isHydratingPullRequestDetails || labelModal.loading || closeModal.running || mergeModal.loading || mergeModal.running || selectedDiffState?._tag === "Loading"
 	const loadingIndicator = LOADING_FRAMES[loadingFrame % LOADING_FRAMES.length]!
 
 	useEffect(() => {
@@ -886,20 +884,20 @@ export const App = () => {
 		const key = pullRequestDiffKey(pullRequest)
 		const existing = pullRequestDiffCache[key]
 		if (includeComments) loadPullRequestComments(pullRequest, force)
-		if (!force && (existing?.status === "ready" || existing?.status === "loading")) return
+		if (!force && existing && (existing._tag === "Ready" || existing._tag === "Loading")) return
 
-		setPullRequestDiffCache((current) => ({ ...current, [key]: { status: "loading" } }))
+		setPullRequestDiffCache((current) => ({ ...current, [key]: PullRequestDiffState.Loading() }))
 		void getPullRequestDiff({ repository: pullRequest.repository, number: pullRequest.number })
 			.then((patch) => {
 				setPullRequestDiffCache((current) => ({
 					...current,
-					[key]: { status: "ready", patch, files: splitPatchFiles(patch) },
+					[key]: PullRequestDiffState.Ready({ patch, files: splitPatchFiles(patch) }),
 				}))
 			})
 			.catch((error) => {
 				setPullRequestDiffCache((current) => ({
 					...current,
-					[key]: { status: "error", error: errorMessage(error) },
+					[key]: PullRequestDiffState.Error({ error: errorMessage(error) }),
 				}))
 				flashNotice(errorMessage(error))
 			})
@@ -1705,11 +1703,11 @@ export const App = () => {
 					selectDiffCommentSide("RIGHT")
 					return
 				}
-				if (key.name === "]" && selectedDiffState?.status === "ready") {
+				if (key.name === "]" && selectedDiffState?._tag === "Ready") {
 					jumpDiffFile(1)
 					return
 				}
-				if (key.name === "[" && selectedDiffState?.status === "ready") {
+				if (key.name === "[" && selectedDiffState?._tag === "Ready") {
 					jumpDiffFile(-1)
 					return
 				}
@@ -1721,7 +1719,7 @@ export const App = () => {
 				setDiffCommentMode(false)
 				return
 			}
-			if (key.name === "c" && selectedDiffState?.status === "ready") {
+			if (key.name === "c" && selectedDiffState?._tag === "Ready") {
 				enterDiffCommentMode()
 				return
 			}
@@ -1771,11 +1769,11 @@ export const App = () => {
 				flashNotice(`Refreshing diff for #${selectedPullRequest.number}`)
 				return
 			}
-			if ((key.name === "]" || key.name === "right" || key.name === "l") && selectedDiffState?.status === "ready") {
+			if ((key.name === "]" || key.name === "right" || key.name === "l") && selectedDiffState?._tag === "Ready") {
 				jumpDiffFile(1)
 				return
 			}
-			if ((key.name === "[" || key.name === "left" || key.name === "h") && selectedDiffState?.status === "ready") {
+			if ((key.name === "[" || key.name === "left" || key.name === "h") && selectedDiffState?._tag === "Ready") {
 				jumpDiffFile(-1)
 				return
 			}

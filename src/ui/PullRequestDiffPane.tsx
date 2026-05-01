@@ -86,7 +86,7 @@ export const PullRequestDiffPane = ({
 	commentCount: number
 	themeId: ThemeId
 }) => {
-	const readyFiles = diffState?.status === "ready" ? diffState.files : []
+	const readyFiles = diffState?._tag === "Ready" ? diffState.files : []
 	const safeIndex = safeDiffFileIndex(readyFiles, fileIndex)
 	const file = readyFiles[safeIndex] ?? null
 	const syntaxStyle = useMemo(() => createDiffSyntaxStyle(), [themeId])
@@ -100,7 +100,7 @@ export const PullRequestDiffPane = ({
 	const leftHeader = `#${pullRequest.number} ${shortRepoName(pullRequest.repository)}`
 	const headerGap = Math.max(2, headerWidth - leftHeader.length - stats.length)
 
-	if (!diffState || diffState.status === "loading") {
+	if (!diffState || diffState._tag === "Loading") {
 		return (
 			<box height={height} flexDirection="column">
 				<box height={1} paddingLeft={1} paddingRight={1}>
@@ -117,7 +117,7 @@ export const PullRequestDiffPane = ({
 		)
 	}
 
-	if (diffState.status === "error") {
+	if (diffState._tag === "Error") {
 		return (
 			<box height={height} flexDirection="column">
 				<box height={1} paddingLeft={1} paddingRight={1}>
