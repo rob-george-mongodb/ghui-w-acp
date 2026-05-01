@@ -2,7 +2,7 @@ import { TextAttributes } from "@opentui/core"
 import { Fragment, useMemo } from "react"
 import { formatRelativeDate } from "../date.js"
 import type { CheckItem, PullRequestItem } from "../domain.js"
-import { colors } from "./colors.js"
+import { colors, type ThemeId } from "./colors.js"
 import { diffStatText } from "./diff.js"
 import { centerCell, Divider, fitCell, PlainLine, TextLine } from "./primitives.js"
 import { labelColor, labelTextColor, reviewLabel, shortRepoName, statusColor } from "./pullRequests.js"
@@ -387,15 +387,17 @@ export const DetailBody = ({
 	contentWidth,
 	bodyLines = DETAIL_BODY_LINES,
 	loadingIndicator,
+	themeId,
 }: {
 	pullRequest: PullRequestItem
 	contentWidth: number
 	bodyLines?: number
 	loadingIndicator: string
+	themeId: ThemeId
 }) => {
 	const previewLines = useMemo(
 		() => bodyPreview(pullRequest.body, contentWidth, bodyLines),
-		[pullRequest.body, contentWidth, bodyLines],
+		[pullRequest.body, contentWidth, bodyLines, themeId],
 	)
 
 	if (!pullRequest.detailLoaded) {
@@ -486,6 +488,7 @@ export const DetailsPane = ({
 	showChecks = false,
 	placeholderContent,
 	loadingIndicator,
+	themeId,
 }: {
 	pullRequest: PullRequestItem | null
 	contentWidth: number
@@ -494,6 +497,7 @@ export const DetailsPane = ({
 	showChecks?: boolean
 	placeholderContent: DetailPlaceholderContent
 	loadingIndicator: string
+	themeId: ThemeId
 }) => {
 	const contentHeight = getDetailsPaneHeight({ pullRequest, contentWidth, bodyLines, paneWidth, showChecks })
 
@@ -502,7 +506,7 @@ export const DetailsPane = ({
 			{pullRequest ? (
 				<>
 					<DetailHeader pullRequest={pullRequest} contentWidth={contentWidth} paneWidth={paneWidth} showChecks={showChecks} />
-					<DetailBody pullRequest={pullRequest} contentWidth={contentWidth} bodyLines={bodyLines} loadingIndicator={loadingIndicator} />
+					<DetailBody pullRequest={pullRequest} contentWidth={contentWidth} bodyLines={bodyLines} loadingIndicator={loadingIndicator} themeId={themeId} />
 				</>
 			) : (
 				<>

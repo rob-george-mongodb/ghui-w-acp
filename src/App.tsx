@@ -1263,6 +1263,7 @@ export const App = () => {
 							showChecks
 							placeholderContent={detailPlaceholderContent}
 							loadingIndicator={loadingIndicator}
+							themeId={themeId}
 						/>
 					</scrollbox>
 				</box>
@@ -1279,7 +1280,7 @@ export const App = () => {
 							<>
 								<DetailHeader pullRequest={selectedPullRequest} contentWidth={rightContentWidth} paneWidth={rightPaneWidth} showChecks />
 								<scrollbox flexGrow={1} verticalScrollbarOptions={{ visible: wideDetailBodyScrollable }}>
-									<DetailBody pullRequest={selectedPullRequest} contentWidth={rightContentWidth} bodyLines={wideDetailLines} loadingIndicator={loadingIndicator} />
+									<DetailBody pullRequest={selectedPullRequest} contentWidth={rightContentWidth} bodyLines={wideDetailLines} loadingIndicator={loadingIndicator} themeId={themeId} />
 								</scrollbox>
 							</>
 						) : (
@@ -1297,12 +1298,13 @@ export const App = () => {
 							paneWidth={contentWidth}
 							placeholderContent={detailPlaceholderContent}
 							loadingIndicator={loadingIndicator}
+							themeId={themeId}
 						/>
 					</scrollbox>
 				</box>
 			) : (
 				<box height={wideBodyHeight} flexDirection="column">
-					<DetailsPane pullRequest={selectedPullRequest} contentWidth={rightContentWidth} paneWidth={contentWidth} placeholderContent={detailPlaceholderContent} loadingIndicator={loadingIndicator} />
+					<DetailsPane pullRequest={selectedPullRequest} contentWidth={rightContentWidth} paneWidth={contentWidth} placeholderContent={detailPlaceholderContent} loadingIndicator={loadingIndicator} themeId={themeId} />
 					<Divider width={contentWidth} />
 					<box flexGrow={1} flexDirection="column">
 						<scrollbox flexGrow={1}>
