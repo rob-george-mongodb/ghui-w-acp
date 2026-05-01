@@ -14,7 +14,7 @@ import { GitHubService } from "./services/GitHubService.js"
 import { loadStoredThemeId, saveStoredThemeId } from "./themeStore.js"
 import { colors, filterThemeDefinitions, setActiveTheme, themeDefinitions, type ThemeId } from "./ui/colors.js"
 import { backspace as editorBackspace, deleteForward as editorDeleteForward, deleteToLineEnd, deleteToLineStart, deleteWordBackward, deleteWordForward, insertText, moveLeft as editorMoveLeft, moveLineEnd, moveLineStart, moveRight as editorMoveRight, moveVertically, moveWordBackward, moveWordForward, type CommentEditorValue } from "./ui/commentEditor.js"
-import { buildStackedDiffFiles, diffCommentAnchorKey, diffCommentLocationKey, getStackedDiffCommentAnchors, nearestDiffCommentAnchorIndex, PullRequestDiffState, pullRequestDiffKey, safeDiffFileIndex, scrollTopForVisibleLine, splitPatchFiles, type DiffCommentAnchor, type StackedDiffCommentAnchor } from "./ui/diff.js"
+import { buildStackedDiffFiles, diffCommentAnchorKey, diffCommentLocationKey, getStackedDiffCommentAnchors, nearestDiffCommentAnchorIndex, PullRequestDiffState, pullRequestDiffKey, safeDiffFileIndex, scrollTopForVisibleLine, splitPatchFiles, stackedDiffFileAtLine, type DiffCommentAnchor, type DiffView, type DiffWrapMode, type StackedDiffCommentAnchor } from "./ui/diff.js"
 import { DetailBody, DetailHeader, DetailPlaceholder, DetailsPane, getDetailBodyHeight, getDetailHeaderHeight, getDetailJunctionRows, getDetailsPaneHeight, LoadingPane, type DetailPlaceholderContent } from "./ui/DetailsPane.js"
 import { FooterHints, initialRetryProgress, RetryProgress } from "./ui/FooterHints.js"
 import { Divider, fitCell, PlainLine, SeparatorColumn } from "./ui/primitives.js"
@@ -59,7 +59,7 @@ type DiffRenderableRuntimeSides = {
 
 interface AppliedDiffLineColor {
 	readonly anchor: StackedDiffCommentAnchor
-	readonly view: "unified" | "split"
+	readonly view: DiffView
 }
 
 interface AppliedDiffLineColorState {
@@ -139,8 +139,8 @@ const detailScrollOffsetAtom = Atom.make(0).pipe(Atom.keepAlive)
 const diffFullViewAtom = Atom.make(false).pipe(Atom.keepAlive)
 const diffFileIndexAtom = Atom.make(0).pipe(Atom.keepAlive)
 const diffScrollTopAtom = Atom.make(0).pipe(Atom.keepAlive)
-const diffRenderViewAtom = Atom.make<"unified" | "split">("split").pipe(Atom.keepAlive)
-const diffWrapModeAtom = Atom.make<"none" | "word">("none").pipe(Atom.keepAlive)
+const diffRenderViewAtom = Atom.make<DiffView>("split").pipe(Atom.keepAlive)
+const diffWrapModeAtom = Atom.make<DiffWrapMode>("none").pipe(Atom.keepAlive)
 const diffCommentModeAtom = Atom.make(false).pipe(Atom.keepAlive)
 const diffCommentAnchorIndexAtom = Atom.make(0).pipe(Atom.keepAlive)
 const diffCommentThreadsAtom = Atom.make<Record<string, readonly PullRequestReviewComment[]>>({}).pipe(Atom.keepAlive)
@@ -322,7 +322,7 @@ const originalDiffLineColor = (anchor: DiffCommentAnchor): DiffLineColorConfig =
 	return { gutter: colors.diff.lineNumberBg, content: colors.diff.contextBg }
 }
 
-const diffSideTargets = (diff: DiffRenderable, anchor: DiffCommentAnchor, view: "unified" | "split") => {
+const diffSideTargets = (diff: DiffRenderable, anchor: DiffCommentAnchor, view: DiffView) => {
 	const withSides = diff as unknown as DiffRenderableRuntimeSides
 	if (view === "split") {
 		const target = anchor.side === "LEFT" ? withSides.leftSide : withSides.rightSide
@@ -949,7 +949,7 @@ export const App = () => {
 		const scrollTop = diffScrollRef.current?.scrollTop
 		if (scrollTop === undefined || stackedDiffFiles.length === 0) return
 		setDiffScrollTop((current) => current === scrollTop ? current : scrollTop)
-		const nextIndex = stackedDiffFiles.reduce((current, file) => file.headerLine <= scrollTop ? file.index : current, 0)
+		const nextIndex = stackedDiffFileAtLine(stackedDiffFiles, scrollTop)?.index ?? 0
 		setDiffFileIndex((current) => current === nextIndex ? current : nextIndex)
 	}
 
@@ -2111,7 +2111,6 @@ export const App = () => {
 					pullRequest={selectedPullRequest}
 					diffState={selectedDiffState}
 					stackedFiles={stackedDiffFiles}
-					fileIndex={diffFileIndex}
 					scrollTop={diffScrollTop}
 					view={effectiveDiffRenderView}
 					wrapMode={diffWrapMode}

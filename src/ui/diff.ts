@@ -1,7 +1,16 @@
 import { parseColor, SyntaxStyle } from "@opentui/core"
-import { Data } from "effect"
+import { Data, Schema } from "effect"
 import type { DiffCommentSide, PullRequestItem, PullRequestReviewComment } from "../domain.js"
 import { colors } from "./colors.js"
+
+export const DiffView = Schema.Literals(["unified", "split"])
+export type DiffView = Schema.Schema.Type<typeof DiffView>
+
+export const DiffWrapMode = Schema.Literals(["none", "word"])
+export type DiffWrapMode = Schema.Schema.Type<typeof DiffWrapMode>
+
+export const DiffCommentKind = Schema.Literals(["addition", "deletion", "context"])
+export type DiffCommentKind = Schema.Schema.Type<typeof DiffCommentKind>
 
 export interface DiffFilePatch {
 	readonly name: string
@@ -26,7 +35,7 @@ export interface DiffCommentAnchor {
 	readonly path: string
 	readonly line: number
 	readonly side: DiffCommentSide
-	readonly kind: "addition" | "deletion" | "context"
+	readonly kind: DiffCommentKind
 	readonly renderLine: number
 	readonly text: string
 }
@@ -180,8 +189,8 @@ export const safeDiffFileIndex = (files: readonly DiffFilePatch[], index: number
 
 export const buildStackedDiffFiles = (
 	files: readonly DiffFilePatch[],
-	view: "unified" | "split",
-	wrapMode: "none" | "word",
+	view: DiffView,
+	wrapMode: DiffWrapMode,
 	width: number,
 ): readonly StackedDiffFilePatch[] => {
 	let offset = 0
@@ -201,6 +210,9 @@ export const buildStackedDiffFiles = (
 	})
 }
 
+export const stackedDiffFileAtLine = (stackedFiles: readonly StackedDiffFilePatch[], line: number) =>
+	stackedFiles.reduce<StackedDiffFilePatch | undefined>((current, file) => file.headerLine <= line ? file : current, undefined)
+
 export const diffStatText = (pullRequest: PullRequestItem) => {
 	if (!pullRequest.detailLoaded) return "loading details"
 	const files = pullRequest.changedFiles === 1 ? "1 file" : `${pullRequest.changedFiles} files`
@@ -217,7 +229,7 @@ export const diffCommentAnchorKey = diffCommentLocationKey
 
 type PendingDiffCommentAnchor = Omit<DiffCommentAnchor, "renderLine">
 
-const diffContentWidth = (lines: readonly string[], view: "unified" | "split", width: number) => {
+const diffContentWidth = (lines: readonly string[], view: DiffView, width: number) => {
 	const lineNumberGutterWidth = patchLineNumberGutterWidth(lines)
 	return view === "split"
 		? Math.max(1, Math.floor(width / 2) - lineNumberGutterWidth)
@@ -246,14 +258,17 @@ export const diffFileStats = (file: DiffFilePatch): DiffFileStats => {
 }
 
 export const diffFileStatText = (file: DiffFilePatch) => {
-	const stats = diffFileStats(file)
+	return diffFileStatsText(diffFileStats(file))
+}
+
+export const diffFileStatsText = (stats: DiffFileStats) => {
 	return [
 		stats.additions > 0 ? `+${stats.additions}` : null,
 		stats.deletions > 0 ? `-${stats.deletions}` : null,
 	].filter((part): part is string => part !== null).join(" ")
 }
 
-export const getDiffCommentAnchors = (file: DiffFilePatch, view: "unified" | "split" = "unified", wrapMode: "none" | "word" = "none", width = 120): readonly DiffCommentAnchor[] => {
+export const getDiffCommentAnchors = (file: DiffFilePatch, view: DiffView = "unified", wrapMode: DiffWrapMode = "none", width = 120): readonly DiffCommentAnchor[] => {
 	const anchors: DiffCommentAnchor[] = []
 	const lines = file.patch.split("\n")
 	const contentWidth = diffContentWidth(lines, view, width)
@@ -334,8 +349,8 @@ export const getDiffCommentAnchors = (file: DiffFilePatch, view: "unified" | "sp
 
 export const getStackedDiffCommentAnchors = (
 	stackedFiles: readonly StackedDiffFilePatch[],
-	view: "unified" | "split" = "unified",
-	wrapMode: "none" | "word" = "none",
+	view: DiffView = "unified",
+	wrapMode: DiffWrapMode = "none",
 	width = 120,
 ): readonly StackedDiffCommentAnchor[] =>
 	stackedFiles.flatMap((stackedFile) => getDiffCommentAnchors(stackedFile.file, view, wrapMode, width).map((anchor) => ({
@@ -358,7 +373,7 @@ export const scrollTopForVisibleLine = (currentTop: number, viewportHeight: numb
 	return currentTop
 }
 
-const estimatedWrappedLineCount = (text: string, width: number, wrapMode: "none" | "word") => {
+const estimatedWrappedLineCount = (text: string, width: number, wrapMode: DiffWrapMode) => {
 	if (wrapMode === "none") return 1
 	return Math.max(1, Math.ceil(Bun.stringWidth(text) / Math.max(1, width)))
 }
@@ -398,7 +413,7 @@ const patchLineNumberGutterWidth = (lines: readonly string[]) => {
 	return Math.max(3, digits + 2) + (hasSigns ? 2 : 0)
 }
 
-export const patchRenderableLineCount = (patch: string, view: "unified" | "split", wrapMode: "none" | "word", width: number) => {
+export const patchRenderableLineCount = (patch: string, view: DiffView, wrapMode: DiffWrapMode, width: number) => {
 	const lines = patch.split("\n")
 	const contentWidth = diffContentWidth(lines, view, width)
 	let count = 0
