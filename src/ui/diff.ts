@@ -216,11 +216,8 @@ export const stackedDiffFileAtLine = (stackedFiles: readonly StackedDiffFilePatc
 export const diffStatText = (pullRequest: PullRequestItem) => {
 	if (!pullRequest.detailLoaded) return "loading details"
 	const files = pullRequest.changedFiles === 1 ? "1 file" : `${pullRequest.changedFiles} files`
-	return [
-		pullRequest.additions > 0 ? `+${pullRequest.additions}` : null,
-		pullRequest.deletions > 0 ? `-${pullRequest.deletions}` : null,
-		files,
-	].filter((part): part is string => part !== null).join(" ")
+	const stats = diffFileStatsText(pullRequest)
+	return stats ? `${stats} ${files}` : files
 }
 
 export const diffCommentLocationKey = (location: Pick<PullRequestReviewComment, "path" | "side" | "line">) => `${location.path}:${location.side}:${location.line}`

@@ -102,19 +102,19 @@ const pullRequestsAtom = githubRuntime.atom(
 	GitHubService.use((github) =>
 		Effect.gen(function*() {
 			const queueMode = yield* Atom.get(queueModeAtom)
-			yield* Atom.set(retryProgressAtom, RetryProgress.Idle())
+			yield* Atom.set(retryProgressAtom, initialRetryProgress)
 			const data = yield* github.listOpenPullRequests(queueMode).pipe(
 				Effect.tapError(() =>
 					Atom.update(retryProgressAtom, (current) => RetryProgress.Retrying({
-						attempt: Math.min((current._tag === "Retrying" ? current.attempt : 0) + 1, PR_FETCH_RETRIES),
+						attempt: Math.min(RetryProgress.$match(current, { Idle: () => 0, Retrying: ({ attempt }) => attempt }) + 1, PR_FETCH_RETRIES),
 						max: PR_FETCH_RETRIES,
 					}))
 				),
 				Effect.retry({ times: PR_FETCH_RETRIES, schedule: Schedule.exponential("300 millis", 2) }),
-				Effect.tapError(() => Atom.set(retryProgressAtom, RetryProgress.Idle())),
+				Effect.tapError(() => Atom.set(retryProgressAtom, initialRetryProgress)),
 			)
 
-			yield* Atom.set(retryProgressAtom, RetryProgress.Idle())
+			yield* Atom.set(retryProgressAtom, initialRetryProgress)
 			const cache = yield* Atom.get(queueLoadCacheAtom)
 			const load = {
 				queueMode,
@@ -770,12 +770,12 @@ export const App = () => {
 		if (selectedDiffKey) {
 			for (const anchor of diffCommentAnchors) {
 				if ((diffCommentThreads[`${selectedDiffKey}:${diffCommentAnchorKey(anchor)}`]?.length ?? 0) > 0) {
-					applyLineColor(anchor, colors.status.pending)
+					applyLineColor(anchor, colors.selectedBg)
 				}
 			}
 		}
 		if (diffCommentMode && selectedDiffCommentAnchor) {
-			applyLineColor(selectedDiffCommentAnchor, selectedDiffCommentAnchor.side === "RIGHT" ? colors.status.passing : colors.status.failing, true)
+			applyLineColor(selectedDiffCommentAnchor, colors.selectedBg, true)
 			if (suppressNextDiffCommentScrollRef.current) {
 				suppressNextDiffCommentScrollRef.current = false
 			} else {
@@ -1046,6 +1046,16 @@ export const App = () => {
 		const nextAnchor = diffCommentAnchors.find((anchor) => anchor.renderLine === selectedDiffCommentAnchor.renderLine && anchor.side === side)
 		if (!nextAnchor) return
 		setDiffCommentAnchorIndex(diffCommentAnchors.indexOf(nextAnchor))
+	}
+
+	const selectDiffCommentLine = (renderLine: number, side: DiffCommentSide | null) => {
+		const lineAnchors = diffCommentAnchors.filter((anchor) => anchor.renderLine === renderLine)
+		const nextAnchor = (side ? lineAnchors.find((anchor) => anchor.side === side) : undefined) ?? lineAnchors[0]
+		if (!nextAnchor) return
+		suppressNextDiffCommentScrollRef.current = true
+		setDiffCommentAnchorIndex(diffCommentAnchors.indexOf(nextAnchor))
+		setDiffFileIndex(nextAnchor.fileIndex)
+		setDiffCommentMode(true)
 	}
 
 	const editComment = (transform: (state: CommentEditorValue) => CommentEditorValue) => {
@@ -2121,6 +2131,7 @@ export const App = () => {
 					commentMode={diffCommentMode}
 					selectedCommentAnchor={selectedDiffCommentAnchor}
 					selectedCommentThread={selectedDiffCommentThread}
+					onSelectCommentLine={selectDiffCommentLine}
 					themeId={themeId}
 				/>
 			) : isWideLayout && detailFullView ? (
