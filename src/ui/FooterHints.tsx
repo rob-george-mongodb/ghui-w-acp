@@ -1,6 +1,6 @@
 import { Data } from "effect"
 import { colors } from "./colors.js"
-import { TextLine } from "./primitives.js"
+import { HintRow, type HintItem } from "./primitives.js"
 
 export type RetryProgress = Data.TaggedEnum<{
 	Idle: {}
@@ -10,185 +10,90 @@ export type RetryProgress = Data.TaggedEnum<{
 export const RetryProgress = Data.taggedEnum<RetryProgress>()
 export const initialRetryProgress: RetryProgress = RetryProgress.Idle()
 
-export const FooterHints = ({
-	filterEditing,
-	showFilterClear,
-	detailFullView,
-	diffFullView,
-	diffCommentMode,
-	hasSelection,
-	canCloseSelection,
-	hasError,
-	isLoading,
-	loadingIndicator,
-	retryProgress,
-}: {
-	filterEditing: boolean
-	showFilterClear: boolean
-	detailFullView: boolean
-	diffFullView: boolean
-	diffCommentMode: boolean
-	hasSelection: boolean
-	canCloseSelection: boolean
-	hasError: boolean
-	isLoading: boolean
-	loadingIndicator: string
-	retryProgress: RetryProgress
-}) => {
-	if (filterEditing) {
-		return (
-			<TextLine>
-				<span fg={colors.count}>search</span>
-				<span fg={colors.muted}> typing  </span>
-				<span fg={colors.count}>↑↓</span>
-				<span fg={colors.muted}> move  </span>
-				<span fg={colors.count}>enter</span>
-				<span fg={colors.muted}> apply  </span>
-				<span fg={colors.count}>esc</span>
-				<span fg={colors.muted}> cancel  </span>
-				<span fg={colors.count}>ctrl-u</span>
-				<span fg={colors.muted}> clear  </span>
-				<span fg={colors.count}>ctrl-w</span>
-				<span fg={colors.muted}> word</span>
-			</TextLine>
-		)
-	}
-
-	if (diffFullView) {
-		if (diffCommentMode) {
-			return (
-				<TextLine>
-					<span fg={colors.count}>↑↓</span>
-					<span fg={colors.muted}> line  </span>
-					<span fg={colors.count}>pgup/pgdn</span>
-					<span fg={colors.muted}> jump  </span>
-					<span fg={colors.count}>←→</span>
-					<span fg={colors.muted}> side  </span>
-					<span fg={colors.count}>enter</span>
-					<span fg={colors.muted}> open  </span>
-					<span fg={colors.count}>a</span>
-					<span fg={colors.muted}> comment  </span>
-					<span fg={colors.count}>c</span>
-					<span fg={colors.muted}> done  </span>
-					<span fg={colors.count}>[]</span>
-					<span fg={colors.muted}> files  </span>
-					<span fg={colors.count}>esc</span>
-					<span fg={colors.muted}> back</span>
-				</TextLine>
-			)
-		}
-		return (
-			<TextLine>
-				<span fg={colors.count}>esc</span>
-				<span fg={colors.muted}> back  </span>
-				<span fg={colors.count}>v</span>
-				<span fg={colors.muted}> view  </span>
-				<span fg={colors.count}>w</span>
-				<span fg={colors.muted}> wrap  </span>
-				<span fg={colors.count}>c</span>
-				<span fg={colors.muted}> comment  </span>
-				<span fg={colors.count}>[]</span>
-				<span fg={colors.muted}> files  </span>
-				<span fg={colors.count}>r</span>
-				<span fg={colors.muted}> reload  </span>
-				<span fg={colors.count}>o</span>
-				<span fg={colors.muted}> open  </span>
-				<span fg={colors.count}>q</span>
-				<span fg={colors.muted}> quit</span>
-			</TextLine>
-		)
-	}
-
-	if (detailFullView) {
-		return (
-			<TextLine>
-				<span fg={colors.count}>esc</span>
-				<span fg={colors.muted}> back  </span>
-				<span fg={colors.count}>↑↓</span>
-				<span fg={colors.muted}> scroll  </span>
-				<span fg={colors.count}>r</span>
-				<span fg={colors.muted}>{hasError ? " retry  " : " refresh  "}</span>
-				<span fg={colors.count}>t</span>
-				<span fg={colors.muted}> theme  </span>
-				{hasSelection ? (
-					<>
-						<span fg={colors.count}>s</span>
-						<span fg={colors.muted}> state  </span>
-						<span fg={colors.count}>d</span>
-						<span fg={colors.muted}> diff  </span>
-						<span fg={colors.count}>l</span>
-						<span fg={colors.muted}> labels  </span>
-						<span fg={colors.count}>m</span>
-						<span fg={colors.muted}> merge  </span>
-						{canCloseSelection ? (
-							<>
-								<span fg={colors.count}>x</span>
-								<span fg={colors.muted}> close  </span>
-							</>
-						) : null}
-					</>
-				) : null}
-				<span fg={colors.count}>o</span>
-				<span fg={colors.muted}> open  </span>
-				<span fg={colors.count}>y</span>
-				<span fg={colors.muted}> copy  </span>
-				<span fg={colors.count}>q</span>
-				<span fg={colors.muted}> quit</span>
-			</TextLine>
-		)
-	}
-
-	return (
-		<TextLine>
-			<span fg={colors.count}>/</span>
-			<span fg={colors.muted}> filter  </span>
-			<span fg={colors.count}>t</span>
-			<span fg={colors.muted}> theme  </span>
-			{showFilterClear ? (
-				<>
-					<span fg={colors.count}>esc</span>
-					<span fg={colors.muted}> clear  </span>
-				</>
-			) : null}
-			{retryProgress._tag === "Retrying" ? (
-				<>
-					<span fg={colors.status.pending}>retry</span>
-					<span fg={colors.muted}> {retryProgress.attempt}/{retryProgress.max}  </span>
-				</>
-			) : isLoading ? (
-				<>
-					<span fg={colors.status.pending}>{loadingIndicator}</span>
-					<span fg={colors.muted}> loading  </span>
-				</>
-			) : null}
-			{hasError ? (
-				<>
-					<span fg={colors.count}>r</span>
-					<span fg={colors.muted}> retry  </span>
-				</>
-			) : null}
-			{hasSelection ? (
-				<>
-					<span fg={colors.count}>d</span>
-					<span fg={colors.muted}> diff  </span>
-					<span fg={colors.count}>l</span>
-					<span fg={colors.muted}> labels  </span>
-					<span fg={colors.count}>m</span>
-					<span fg={colors.muted}> merge  </span>
-					{canCloseSelection ? (
-						<>
-							<span fg={colors.count}>x</span>
-							<span fg={colors.muted}> close  </span>
-						</>
-					) : null}
-					<span fg={colors.count}>o</span>
-					<span fg={colors.muted}> open  </span>
-					<span fg={colors.count}>y</span>
-					<span fg={colors.muted}> copy  </span>
-				</>
-			) : null}
-			<span fg={colors.count}>ctrl-p</span>
-			<span fg={colors.muted}> commands</span>
-		</TextLine>
-	)
+interface HintsContext {
+	readonly filterEditing: boolean
+	readonly showFilterClear: boolean
+	readonly detailFullView: boolean
+	readonly diffFullView: boolean
+	readonly diffCommentMode: boolean
+	readonly hasSelection: boolean
+	readonly canCloseSelection: boolean
+	readonly hasError: boolean
+	readonly isLoading: boolean
+	readonly loadingIndicator: string
+	readonly retryProgress: RetryProgress
 }
+
+const filterEditingHints: readonly HintItem[] = [
+	{ key: "search", label: "typing" },
+	{ key: "↑↓", label: "move" },
+	{ key: "enter", label: "apply" },
+	{ key: "esc", label: "cancel" },
+	{ key: "ctrl-u", label: "clear" },
+	{ key: "ctrl-w", label: "word" },
+]
+
+const diffCommentModeHints: readonly HintItem[] = [
+	{ key: "↑↓", label: "line" },
+	{ key: "pgup/pgdn", label: "jump" },
+	{ key: "←→", label: "side" },
+	{ key: "enter", label: "open" },
+	{ key: "a", label: "comment" },
+	{ key: "c", label: "done" },
+	{ key: "[]", label: "files" },
+	{ key: "esc", label: "back" },
+]
+
+const diffViewHints: readonly HintItem[] = [
+	{ key: "esc", label: "back" },
+	{ key: "v", label: "view" },
+	{ key: "w", label: "wrap" },
+	{ key: "c", label: "comment" },
+	{ key: "[]", label: "files" },
+	{ key: "r", label: "reload" },
+	{ key: "o", label: "open" },
+	{ key: "q", label: "quit" },
+]
+
+const detailFullViewHints = (ctx: HintsContext): readonly HintItem[] => [
+	{ key: "esc", label: "back" },
+	{ key: "↑↓", label: "scroll" },
+	{ key: "r", label: ctx.hasError ? "retry" : "refresh" },
+	{ key: "t", label: "theme" },
+	{ key: "s", label: "state", when: ctx.hasSelection },
+	{ key: "d", label: "diff", when: ctx.hasSelection },
+	{ key: "l", label: "labels", when: ctx.hasSelection },
+	{ key: "m", label: "merge", when: ctx.hasSelection },
+	{ key: "x", label: "close", when: ctx.hasSelection && ctx.canCloseSelection },
+	{ key: "o", label: "open" },
+	{ key: "y", label: "copy" },
+	{ key: "q", label: "quit" },
+]
+
+const defaultHints = (ctx: HintsContext): readonly HintItem[] => {
+	const retrying = ctx.retryProgress._tag === "Retrying"
+	return [
+		{ key: "/", label: "filter" },
+		{ key: "t", label: "theme" },
+		{ key: "esc", label: "clear", when: ctx.showFilterClear },
+		{ key: "retry", label: retrying ? `${(ctx.retryProgress as { attempt: number; max: number }).attempt}/${(ctx.retryProgress as { attempt: number; max: number }).max}` : "", when: retrying, keyFg: colors.status.pending },
+		{ key: ctx.loadingIndicator, label: "loading", when: !retrying && ctx.isLoading, keyFg: colors.status.pending },
+		{ key: "r", label: "retry", when: ctx.hasError },
+		{ key: "d", label: "diff", when: ctx.hasSelection },
+		{ key: "l", label: "labels", when: ctx.hasSelection },
+		{ key: "m", label: "merge", when: ctx.hasSelection },
+		{ key: "x", label: "close", when: ctx.hasSelection && ctx.canCloseSelection },
+		{ key: "o", label: "open", when: ctx.hasSelection },
+		{ key: "y", label: "copy", when: ctx.hasSelection },
+		{ key: "ctrl-p", label: "commands" },
+	]
+}
+
+const footerHints = (ctx: HintsContext): readonly HintItem[] => {
+	if (ctx.filterEditing) return filterEditingHints
+	if (ctx.diffFullView) return ctx.diffCommentMode ? diffCommentModeHints : diffViewHints
+	if (ctx.detailFullView) return detailFullViewHints(ctx)
+	return defaultHints(ctx)
+}
+
+export const FooterHints = (props: HintsContext) => <HintRow items={footerHints(props)} />
