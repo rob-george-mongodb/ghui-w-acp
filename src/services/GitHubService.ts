@@ -574,6 +574,12 @@ export class GitHubService extends Context.Service<GitHubService, {
 		Effect.gen(function*() {
 			const command = yield* CommandRunner
 
+			const ghJson = <S extends Schema.Top>(label: string, schema: S, args: readonly string[]) =>
+				command.runSchema(schema, "gh", args).pipe(Effect.withSpan(`GitHubService.${label}`))
+
+			const ghVoid = (label: string, args: readonly string[]) =>
+				command.run("gh", args).pipe(Effect.withSpan(`GitHubService.${label}`), Effect.asVoid)
+
 			const searchPage = <Item extends Schema.Top>(label: string, query: string, schema: Item, parse: (node: Item["Type"]) => PullRequestItem) => {
 				const responseSchema = SearchResponseSchema(schema)
 				return Effect.fn(`GitHubService.${label}`)(function*(input: ListPullRequestPageInput) {
@@ -661,24 +667,18 @@ export class GitHubService extends Context.Service<GitHubService, {
 				return parsePullRequest(pullRequest)
 			})
 
-			const getAuthenticatedUser = Effect.fn("GitHubService.getAuthenticatedUser")(function*() {
-				const viewer = yield* command.runSchema(ViewerSchema, "gh", ["api", "user"])
-				return viewer.login
-			})
+			const getAuthenticatedUser = () =>
+				ghJson("getAuthenticatedUser", ViewerSchema, ["api", "user"]).pipe(Effect.map((viewer) => viewer.login))
 
-			const getPullRequestDiff = Effect.fn("GitHubService.getPullRequestDiff")(function*(repository: string, number: number) {
-				const response = yield* command.runSchema(PullRequestFilesResponseSchema, "gh", [
+			const getPullRequestDiff = (repository: string, number: number) =>
+				ghJson("getPullRequestDiff", PullRequestFilesResponseSchema, [
 					"api", "--paginate", "--slurp", `repos/${repository}/pulls/${number}/files`,
-				])
-				return pullRequestFilesToPatch(parsePullRequestFiles(response))
-			})
+				]).pipe(Effect.map((response) => pullRequestFilesToPatch(parsePullRequestFiles(response))))
 
-			const listPullRequestComments = Effect.fn("GitHubService.listPullRequestComments")(function*(repository: string, number: number) {
-				const response = yield* command.runSchema(CommentsResponseSchema, "gh", [
+			const listPullRequestComments = (repository: string, number: number) =>
+				ghJson("listPullRequestComments", CommentsResponseSchema, [
 					"api", "--paginate", "--slurp", `repos/${repository}/pulls/${number}/comments`,
-				])
-				return parsePullRequestComments(response)
-			})
+				]).pipe(Effect.map(parsePullRequestComments))
 
 			const getPullRequestMergeInfo = Effect.fn("GitHubService.getPullRequestMergeInfo")(function*(repository: string, number: number) {
 				const info = yield* command.runSchema(MergeInfoResponseSchema, "gh", [
@@ -701,14 +701,11 @@ export class GitHubService extends Context.Service<GitHubService, {
 				} satisfies PullRequestMergeInfo
 			})
 
-			const mergePullRequest = Effect.fn("GitHubService.mergePullRequest")(function*(repository: string, number: number, action: PullRequestMergeAction) {
-				const base = ["pr", "merge", String(number), "--repo", repository] as const
-				yield* command.run("gh", [...base, ...getMergeActionDefinition(action).cliArgs])
-			})
+			const mergePullRequest = (repository: string, number: number, action: PullRequestMergeAction) =>
+				ghVoid("mergePullRequest", ["pr", "merge", String(number), "--repo", repository, ...getMergeActionDefinition(action).cliArgs])
 
-			const closePullRequest = Effect.fn("GitHubService.closePullRequest")(function*(repository: string, number: number) {
-				yield* command.run("gh", ["pr", "close", String(number), "--repo", repository])
-			})
+			const closePullRequest = (repository: string, number: number) =>
+				ghVoid("closePullRequest", ["pr", "close", String(number), "--repo", repository])
 
 			const createPullRequestComment = Effect.fn("GitHubService.createPullRequestComment")(function*(input: CreatePullRequestCommentInput) {
 				const response = yield* command.runSchema(PullRequestCommentSchema, "gh", [
@@ -722,24 +719,19 @@ export class GitHubService extends Context.Service<GitHubService, {
 				return parsePullRequestComment(response) ?? fallbackCreatedComment(input)
 			})
 
-			const toggleDraftStatus = Effect.fn("GitHubService.toggleDraftStatus")(function*(repository: string, number: number, isDraft: boolean) {
-				yield* command.run("gh", ["pr", "ready", String(number), "--repo", repository, ...(isDraft ? [] : ["--undo"])])
-			})
+			const toggleDraftStatus = (repository: string, number: number, isDraft: boolean) =>
+				ghVoid("toggleDraftStatus", ["pr", "ready", String(number), "--repo", repository, ...(isDraft ? [] : ["--undo"])])
 
-			const listRepoLabels = Effect.fn("GitHubService.listRepoLabels")(function*(repository: string) {
-				const labels = yield* command.runSchema(RepoLabelsResponseSchema, "gh", [
+			const listRepoLabels = (repository: string) =>
+				ghJson("listRepoLabels", RepoLabelsResponseSchema, [
 					"label", "list", "--repo", repository, "--json", "name,color", "--limit", "100",
-				])
-				return labels.map((label) => ({ name: label.name, color: `#${label.color}` }))
-			})
+				]).pipe(Effect.map((labels) => labels.map((label) => ({ name: label.name, color: `#${label.color}` }))))
 
-			const addPullRequestLabel = Effect.fn("GitHubService.addPullRequestLabel")(function*(repository: string, number: number, label: string) {
-				yield* command.run("gh", ["pr", "edit", String(number), "--repo", repository, "--add-label", label])
-			})
+			const addPullRequestLabel = (repository: string, number: number, label: string) =>
+				ghVoid("addPullRequestLabel", ["pr", "edit", String(number), "--repo", repository, "--add-label", label])
 
-			const removePullRequestLabel = Effect.fn("GitHubService.removePullRequestLabel")(function*(repository: string, number: number, label: string) {
-				yield* command.run("gh", ["pr", "edit", String(number), "--repo", repository, "--remove-label", label])
-			})
+			const removePullRequestLabel = (repository: string, number: number, label: string) =>
+				ghVoid("removePullRequestLabel", ["pr", "edit", String(number), "--repo", repository, "--remove-label", label])
 
 			return GitHubService.of({
 				listOpenPullRequests,
