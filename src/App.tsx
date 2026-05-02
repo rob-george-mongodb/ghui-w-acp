@@ -1,6 +1,6 @@
 import type { DiffRenderable, PasteEvent, ScrollBoxRenderable } from "@opentui/core"
 import { RegistryContext, useAtom, useAtomRefresh, useAtomSet, useAtomValue } from "@effect/atom-react"
-import { useBindings } from "@opentui/keymap/react"
+import { useScopedBindings } from "./keyboard/useScopedBindings.js"
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
 import { Cause, Effect, Layer, Schedule } from "effect"
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult"
@@ -1778,11 +1778,7 @@ export const App = () => {
 	const selectedCommandIndex = clampCommandIndex(commandPalette.selectedIndex, commandPaletteCommands)
 	const selectedCommand = commandPaletteCommands[selectedCommandIndex] ?? null
 
-	// Keymap migration phase 2: simple cmd-id bindings move out of useKeyboard.
-	// Gated to "global mode" — no modal active, no full-view, not in filter editing —
-	// so these don't dispatch on top of modal-specific handlers below.
-	const globalKeymapActiveRef = useRef(false)
-	globalKeymapActiveRef.current = !commandPaletteActive
+	const globalLayerActive = !commandPaletteActive
 		&& !openRepositoryModalActive
 		&& !labelModalActive
 		&& !commentModalActive
@@ -1793,263 +1789,179 @@ export const App = () => {
 		&& !diffFullView
 		&& !detailFullView
 		&& !filterMode
-	const runCommandByIdRef = useRef(runCommandById)
-	runCommandByIdRef.current = runCommandById
-	useBindings(() => ({
-		enabled: () => globalKeymapActiveRef.current,
-		bindings: [
-			{ key: "/", cmd: () => runCommandByIdRef.current("filter.open") },
-			{ key: "r", cmd: () => runCommandByIdRef.current("pull.refresh") },
-			{ key: "t", cmd: () => runCommandByIdRef.current("theme.open") },
-			{ key: "d", cmd: () => runCommandByIdRef.current("diff.open") },
-			{ key: "l", cmd: () => runCommandByIdRef.current("pull.labels") },
-			{ key: "m", cmd: () => runCommandByIdRef.current("pull.merge") },
-			{ key: "shift+m", cmd: () => runCommandByIdRef.current("pull.merge") },
-			{ key: "x", cmd: () => runCommandByIdRef.current("pull.close") },
-			{ key: "o", cmd: () => runCommandByIdRef.current("pull.open-browser") },
-			{ key: "s", cmd: () => runCommandByIdRef.current("pull.toggle-draft") },
-			{ key: "shift+s", cmd: () => runCommandByIdRef.current("pull.toggle-draft") },
-			{ key: "y", cmd: () => runCommandByIdRef.current("pull.copy-metadata") },
-			{ key: "return", cmd: () => runCommandByIdRef.current("detail.open") },
-		],
-	}), [])
-	// Always-on bindings — work even while modals are open.
-	useBindings(() => ({
-		bindings: [
-			{ key: "ctrl+p", cmd: () => runCommandByIdRef.current("command.open") },
-			{ key: "meta+k", cmd: () => runCommandByIdRef.current("command.open") },
-		],
-	}), [])
+	useScopedBindings({
+		when: globalLayerActive,
+		bindings: {
+			"/": () => runCommandById("filter.open"),
+			r: () => runCommandById("pull.refresh"),
+			t: () => runCommandById("theme.open"),
+			d: () => runCommandById("diff.open"),
+			l: () => runCommandById("pull.labels"),
+			m: () => runCommandById("pull.merge"),
+			"shift+m": () => runCommandById("pull.merge"),
+			x: () => runCommandById("pull.close"),
+			o: () => runCommandById("pull.open-browser"),
+			s: () => runCommandById("pull.toggle-draft"),
+			"shift+s": () => runCommandById("pull.toggle-draft"),
+			y: () => runCommandById("pull.copy-metadata"),
+			return: () => runCommandById("detail.open"),
+		},
+	})
 
-	// CloseModal: escape closes, enter confirms.
-	const closeModalActiveRef = useRef(false)
-	closeModalActiveRef.current = closeModalActive
-	const closeActiveModalRef = useRef(closeActiveModal)
-	closeActiveModalRef.current = closeActiveModal
-	const confirmClosePullRequestRef = useRef(confirmClosePullRequest)
-	confirmClosePullRequestRef.current = confirmClosePullRequest
-	useBindings(() => ({
-		enabled: () => closeModalActiveRef.current,
-		bindings: [
-			{ key: "escape", cmd: () => closeActiveModalRef.current() },
-			{ key: "return", cmd: () => confirmClosePullRequestRef.current() },
-		],
-	}), [])
+	useScopedBindings({
+		when: true,
+		bindings: {
+			"ctrl+p": () => runCommandById("command.open"),
+			"meta+k": () => runCommandById("command.open"),
+		},
+	})
 
-	// MergeModal: escape, enter (when options>0), up/down/j/k navigation.
-	const mergeModalActiveRef = useRef(false)
-	mergeModalActiveRef.current = mergeModalActive
-	const mergeModalContextRef = useRef({ availableCount: 0, confirm: confirmMergeAction, setMergeModal })
-	mergeModalContextRef.current = {
-		availableCount: availableMergeActions(mergeModal.info).length,
-		confirm: confirmMergeAction,
-		setMergeModal,
-	}
-	const moveMergeSelection = (delta: -1 | 1) => mergeModalContextRef.current.setMergeModal((current) => {
-		const max = Math.max(0, mergeModalContextRef.current.availableCount - 1)
+	useScopedBindings({
+		when: closeModalActive,
+		bindings: {
+			escape: closeActiveModal,
+			return: confirmClosePullRequest,
+		},
+	})
+
+	const moveMergeSelection = (delta: -1 | 1) => setMergeModal((current) => {
+		const max = Math.max(0, availableMergeActions(mergeModal.info).length - 1)
 		return { ...current, selectedIndex: Math.max(0, Math.min(max, current.selectedIndex + delta)) }
 	})
-	useBindings(() => ({
-		enabled: () => mergeModalActiveRef.current,
-		bindings: [
-			{ key: "escape", cmd: () => closeActiveModalRef.current() },
-			{ key: "return", cmd: () => {
-				if (mergeModalContextRef.current.availableCount > 0) mergeModalContextRef.current.confirm()
-			} },
-			{ key: "up", cmd: () => moveMergeSelection(-1) },
-			{ key: "k", cmd: () => moveMergeSelection(-1) },
-			{ key: "down", cmd: () => moveMergeSelection(1) },
-			{ key: "j", cmd: () => moveMergeSelection(1) },
-		],
-	}), [])
+	useScopedBindings({
+		when: mergeModalActive,
+		bindings: {
+			escape: closeActiveModal,
+			return: () => {
+				if (availableMergeActions(mergeModal.info).length > 0) confirmMergeAction()
+			},
+			up: () => moveMergeSelection(-1),
+			k: () => moveMergeSelection(-1),
+			down: () => moveMergeSelection(1),
+			j: () => moveMergeSelection(1),
+		},
+	})
 
-	// CommentThreadModal: scroll the thread, shortcut to compose a reply.
-	const commentThreadModalActiveRef = useRef(false)
-	commentThreadModalActiveRef.current = commentThreadModalActive
-	const commentThreadCtxRef = useRef({ openDiffCommentModal, setCommentThreadModal, halfPage })
-	commentThreadCtxRef.current = { openDiffCommentModal, setCommentThreadModal, halfPage }
-	const scrollCommentThread = (delta: number) => commentThreadCtxRef.current.setCommentThreadModal((current) => ({
+	const scrollCommentThread = (delta: number) => setCommentThreadModal((current) => ({
 		...current,
 		scrollOffset: Math.max(0, current.scrollOffset + delta),
 	}))
-	useBindings(() => ({
-		enabled: () => commentThreadModalActiveRef.current,
-		bindings: [
-			{ key: "escape", cmd: () => closeActiveModalRef.current() },
-			{ key: "return", cmd: () => commentThreadCtxRef.current.openDiffCommentModal() },
-			{ key: "a", cmd: () => commentThreadCtxRef.current.openDiffCommentModal() },
-			{ key: "c", cmd: () => commentThreadCtxRef.current.openDiffCommentModal() },
-			{ key: "up", cmd: () => scrollCommentThread(-1) },
-			{ key: "k", cmd: () => scrollCommentThread(-1) },
-			{ key: "down", cmd: () => scrollCommentThread(1) },
-			{ key: "j", cmd: () => scrollCommentThread(1) },
-			{ key: "pageup", cmd: () => scrollCommentThread(-commentThreadCtxRef.current.halfPage) },
-			{ key: "ctrl+u", cmd: () => scrollCommentThread(-commentThreadCtxRef.current.halfPage) },
-			{ key: "pagedown", cmd: () => scrollCommentThread(commentThreadCtxRef.current.halfPage) },
-			{ key: "ctrl+d", cmd: () => scrollCommentThread(commentThreadCtxRef.current.halfPage) },
-			{ key: "ctrl+v", cmd: () => scrollCommentThread(commentThreadCtxRef.current.halfPage) },
-		],
-	}), [])
+	useScopedBindings({
+		when: commentThreadModalActive,
+		bindings: {
+			escape: closeActiveModal,
+			return: openDiffCommentModal,
+			a: openDiffCommentModal,
+			c: openDiffCommentModal,
+			up: () => scrollCommentThread(-1),
+			k: () => scrollCommentThread(-1),
+			down: () => scrollCommentThread(1),
+			j: () => scrollCommentThread(1),
+			pageup: () => scrollCommentThread(-halfPage),
+			"ctrl+u": () => scrollCommentThread(-halfPage),
+			pagedown: () => scrollCommentThread(halfPage),
+			"ctrl+d": () => scrollCommentThread(halfPage),
+			"ctrl+v": () => scrollCommentThread(halfPage),
+		},
+	})
 
-	// LabelModal: nav keys via keymap; text input stays in useKeyboard fallback.
-	const labelModalActiveRef = useRef(false)
-	labelModalActiveRef.current = labelModalActive
-	const labelModalCtxRef = useRef({ toggleLabelAtIndex, setLabelModal, filteredCount: 0 })
-	labelModalCtxRef.current = {
-		toggleLabelAtIndex,
-		setLabelModal,
-		filteredCount: filterLabels(labelModal.availableLabels, labelModal.query).length,
-	}
-	const moveLabelSelection = (delta: -1 | 1) => labelModalCtxRef.current.setLabelModal((current) => {
-		const max = Math.max(0, labelModalCtxRef.current.filteredCount - 1)
+	const moveLabelSelection = (delta: -1 | 1) => setLabelModal((current) => {
+		const max = Math.max(0, filterLabels(labelModal.availableLabels, labelModal.query).length - 1)
 		return { ...current, selectedIndex: Math.max(0, Math.min(max, current.selectedIndex + delta)) }
 	})
-	useBindings(() => ({
-		enabled: () => labelModalActiveRef.current,
-		bindings: [
-			{ key: "escape", cmd: () => closeActiveModalRef.current() },
-			{ key: "return", cmd: () => labelModalCtxRef.current.toggleLabelAtIndex() },
-			{ key: "up", cmd: () => moveLabelSelection(-1) },
-			{ key: "k", cmd: () => moveLabelSelection(-1) },
-			{ key: "down", cmd: () => moveLabelSelection(1) },
-			{ key: "j", cmd: () => moveLabelSelection(1) },
-		],
-	}), [])
-
-	// ThemeModal: nav + filter-mode toggle. j/k only navigate when not in filter mode
-	// (so users can type those letters into the query).
-	const themeModalActiveRef = useRef(false)
-	themeModalActiveRef.current = themeModalActive
-	const themeModalCtxRef = useRef({
-		filterMode: false,
-		hasResults: true,
-		closeThemeModal,
-		updateThemeQuery,
-		moveThemeSelection,
+	useScopedBindings({
+		when: labelModalActive,
+		bindings: {
+			escape: closeActiveModal,
+			return: toggleLabelAtIndex,
+			up: () => moveLabelSelection(-1),
+			k: () => moveLabelSelection(-1),
+			down: () => moveLabelSelection(1),
+			j: () => moveLabelSelection(1),
+		},
 	})
-	themeModalCtxRef.current = {
-		filterMode: themeModal.filterMode,
-		hasResults: filterThemeDefinitions(themeModal.query).length > 0,
-		closeThemeModal,
-		updateThemeQuery,
-		moveThemeSelection,
-	}
-	useBindings(() => ({
-		enabled: () => themeModalActiveRef.current,
-		bindings: [
-			{ key: "escape", cmd: () => {
-				if (themeModalCtxRef.current.filterMode) themeModalCtxRef.current.updateThemeQuery("", { filterMode: false })
-				else themeModalCtxRef.current.closeThemeModal(false)
-			} },
-			{ key: "/", cmd: () => themeModalCtxRef.current.updateThemeQuery("", { filterMode: true }) },
-			{ key: "return", cmd: () => {
-				if (themeModalCtxRef.current.filterMode && !themeModalCtxRef.current.hasResults) return
-				themeModalCtxRef.current.closeThemeModal(true)
-			} },
-			{ key: "up", cmd: () => themeModalCtxRef.current.moveThemeSelection(-1) },
-			{ key: "down", cmd: () => themeModalCtxRef.current.moveThemeSelection(1) },
-			{ key: "k", cmd: () => { if (!themeModalCtxRef.current.filterMode) themeModalCtxRef.current.moveThemeSelection(-1) } },
-			{ key: "j", cmd: () => { if (!themeModalCtxRef.current.filterMode) themeModalCtxRef.current.moveThemeSelection(1) } },
-		],
-	}), [])
 
-	// OpenRepositoryModal: escape closes, return submits.
-	const openRepositoryModalActiveRef = useRef(false)
-	openRepositoryModalActiveRef.current = openRepositoryModalActive
-	const openRepositoryFromInputRef = useRef(openRepositoryFromInput)
-	openRepositoryFromInputRef.current = openRepositoryFromInput
-	useBindings(() => ({
-		enabled: () => openRepositoryModalActiveRef.current,
-		bindings: [
-			{ key: "escape", cmd: () => closeActiveModalRef.current() },
-			{ key: "return", cmd: () => openRepositoryFromInputRef.current() },
-		],
-	}), [])
-
-	// CommentModal: full text editor — escape, submit, all the cursor/edit bindings.
-	const commentModalActiveRef = useRef(false)
-	commentModalActiveRef.current = commentModalActive
-	const commentModalCtxRef = useRef({ submitDiffComment, editComment })
-	commentModalCtxRef.current = { submitDiffComment, editComment }
-	const editComm = (transform: Parameters<typeof editComment>[0]) => commentModalCtxRef.current.editComment(transform)
-	useBindings(() => ({
-		enabled: () => commentModalActiveRef.current,
-		bindings: [
-			{ key: "escape", cmd: () => closeActiveModalRef.current() },
-			{ key: "ctrl+s", cmd: () => commentModalCtxRef.current.submitDiffComment() },
-			{ key: "ctrl+a", cmd: () => editComm(moveLineStart) },
-			{ key: "ctrl+e", cmd: () => editComm(moveLineEnd) },
-			{ key: "ctrl+b", cmd: () => editComm(editorMoveLeft) },
-			{ key: "ctrl+f", cmd: () => editComm(editorMoveRight) },
-			{ key: "ctrl+w", cmd: () => editComm(deleteWordBackward) },
-			{ key: "ctrl+u", cmd: () => editComm(deleteToLineStart) },
-			{ key: "ctrl+k", cmd: () => editComm(deleteToLineEnd) },
-			{ key: "ctrl+d", cmd: () => editComm(editorDeleteForward) },
-			{ key: "meta+b", cmd: () => editComm(moveWordBackward) },
-			{ key: "meta+left", cmd: () => editComm(moveWordBackward) },
-			{ key: "meta+f", cmd: () => editComm(moveWordForward) },
-			{ key: "meta+right", cmd: () => editComm(moveWordForward) },
-			{ key: "meta+backspace", cmd: () => editComm(deleteWordBackward) },
-			{ key: "meta+delete", cmd: () => editComm(deleteWordForward) },
-			{ key: "backspace", cmd: () => editComm(editorBackspace) },
-			{ key: "delete", cmd: () => editComm(editorDeleteForward) },
-			{ key: "left", cmd: () => editComm(editorMoveLeft) },
-			{ key: "right", cmd: () => editComm(editorMoveRight) },
-			{ key: "up", cmd: () => editComm((state) => moveVertically(state, -1)) },
-			{ key: "down", cmd: () => editComm((state) => moveVertically(state, 1)) },
-			{ key: "home", cmd: () => editComm(moveLineStart) },
-			{ key: "end", cmd: () => editComm(moveLineEnd) },
-			{ key: "shift+return", cmd: () => editComm((state) => insertText(state, "\n")) },
-			{ key: "return", cmd: () => commentModalCtxRef.current.submitDiffComment() },
-		],
-	}), [])
-
-	// CommandPalette: escape closes, return runs, up/k & down/j navigate.
-	const commandPaletteActiveRef = useRef(false)
-	commandPaletteActiveRef.current = commandPaletteActive
-	const commandPaletteCtxRef = useRef({
-		runSelected: () => {},
-		setCommandPalette,
-		paletteCommands: commandPaletteCommands,
+	useScopedBindings({
+		when: themeModalActive,
+		bindings: {
+			escape: () => {
+				if (themeModal.filterMode) updateThemeQuery("", { filterMode: false })
+				else closeThemeModal(false)
+			},
+			"/": () => updateThemeQuery("", { filterMode: true }),
+			return: () => {
+				if (themeModal.filterMode && filterThemeDefinitions(themeModal.query).length === 0) return
+				closeThemeModal(true)
+			},
+			up: () => moveThemeSelection(-1),
+			down: () => moveThemeSelection(1),
+			k: () => { if (!themeModal.filterMode) moveThemeSelection(-1) },
+			j: () => { if (!themeModal.filterMode) moveThemeSelection(1) },
+		},
 	})
-	commandPaletteCtxRef.current = {
-		runSelected: () => { if (selectedCommand) runCommand(selectedCommand, { notifyDisabled: true, closePalette: true }) },
-		setCommandPalette,
-		paletteCommands: commandPaletteCommands,
-	}
-	const moveCommandPaletteSelection = (delta: -1 | 1) => commandPaletteCtxRef.current.setCommandPalette((current) => {
-		const selectedIndex = clampCommandIndex(current.selectedIndex + delta, commandPaletteCtxRef.current.paletteCommands)
+
+	useScopedBindings({
+		when: openRepositoryModalActive,
+		bindings: {
+			escape: closeActiveModal,
+			return: openRepositoryFromInput,
+		},
+	})
+
+	useScopedBindings({
+		when: commentModalActive,
+		bindings: {
+			escape: closeActiveModal,
+			"ctrl+s": submitDiffComment,
+			"ctrl+a": () => editComment(moveLineStart),
+			"ctrl+e": () => editComment(moveLineEnd),
+			"ctrl+b": () => editComment(editorMoveLeft),
+			"ctrl+f": () => editComment(editorMoveRight),
+			"ctrl+w": () => editComment(deleteWordBackward),
+			"ctrl+u": () => editComment(deleteToLineStart),
+			"ctrl+k": () => editComment(deleteToLineEnd),
+			"ctrl+d": () => editComment(editorDeleteForward),
+			"meta+b": () => editComment(moveWordBackward),
+			"meta+left": () => editComment(moveWordBackward),
+			"meta+f": () => editComment(moveWordForward),
+			"meta+right": () => editComment(moveWordForward),
+			"meta+backspace": () => editComment(deleteWordBackward),
+			"meta+delete": () => editComment(deleteWordForward),
+			backspace: () => editComment(editorBackspace),
+			delete: () => editComment(editorDeleteForward),
+			left: () => editComment(editorMoveLeft),
+			right: () => editComment(editorMoveRight),
+			up: () => editComment((state) => moveVertically(state, -1)),
+			down: () => editComment((state) => moveVertically(state, 1)),
+			home: () => editComment(moveLineStart),
+			end: () => editComment(moveLineEnd),
+			"shift+return": () => editComment((state) => insertText(state, "\n")),
+			return: submitDiffComment,
+		},
+	})
+
+	const moveCommandPaletteSelection = (delta: -1 | 1) => setCommandPalette((current) => {
+		const selectedIndex = clampCommandIndex(current.selectedIndex + delta, commandPaletteCommands)
 		return selectedIndex === current.selectedIndex ? current : { ...current, selectedIndex }
 	})
-	useBindings(() => ({
-		enabled: () => commandPaletteActiveRef.current,
-		bindings: [
-			{ key: "escape", cmd: () => closeActiveModalRef.current() },
-			{ key: "ctrl+c", cmd: () => closeActiveModalRef.current() },
-			{ key: "return", cmd: () => commandPaletteCtxRef.current.runSelected() },
-			{ key: "up", cmd: () => moveCommandPaletteSelection(-1) },
-			{ key: "down", cmd: () => moveCommandPaletteSelection(1) },
-		],
-	}), [])
+	useScopedBindings({
+		when: commandPaletteActive,
+		bindings: {
+			escape: closeActiveModal,
+			"ctrl+c": closeActiveModal,
+			return: () => { if (selectedCommand) runCommand(selectedCommand, { notifyDisabled: true, closePalette: true }) },
+			up: () => moveCommandPaletteSelection(-1),
+			down: () => moveCommandPaletteSelection(1),
+		},
+	})
 
-	// FilterMode: escape cancels, return commits.
-	const filterModeRef = useRef(false)
-	filterModeRef.current = filterMode
-	const filterCtxRef = useRef({ filterQuery, filterDraft, setFilterQuery, setFilterDraft, setFilterMode })
-	filterCtxRef.current = { filterQuery, filterDraft, setFilterQuery, setFilterDraft, setFilterMode }
-	useBindings(() => ({
-		enabled: () => filterModeRef.current,
-		bindings: [
-			{ key: "escape", cmd: () => {
-				filterCtxRef.current.setFilterDraft(filterCtxRef.current.filterQuery)
-				filterCtxRef.current.setFilterMode(false)
-			} },
-			{ key: "return", cmd: () => {
-				filterCtxRef.current.setFilterQuery(filterCtxRef.current.filterDraft)
-				filterCtxRef.current.setFilterMode(false)
-			} },
-		],
-	}), [])
+	useScopedBindings({
+		when: filterMode,
+		bindings: {
+			escape: () => { setFilterDraft(filterQuery); setFilterMode(false) },
+			return: () => { setFilterQuery(filterDraft); setFilterMode(false) },
+		},
+	})
 
 	useKeyboard((key) => {
 		if (commandPaletteActive) {
