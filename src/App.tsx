@@ -119,6 +119,13 @@ const appendPullRequestPage = (existing: readonly PullRequestItem[], incoming: r
 	return [...existing, ...mergedIncoming.filter((pullRequest) => !seen.has(pullRequest.url))]
 }
 
+const refreshPullRequestPage = (existing: readonly PullRequestItem[] | undefined, incoming: readonly PullRequestItem[]) => {
+	if (!existing) return incoming
+	const refreshed = mergeCachedDetails(incoming, existing)
+	const refreshedUrls = new Set(refreshed.map((pullRequest) => pullRequest.url))
+	return [...refreshed, ...existing.filter((pullRequest) => !refreshedUrls.has(pullRequest.url))]
+}
+
 const retryProgressAtom = Atom.make<RetryProgress>(initialRetryProgress).pipe(Atom.keepAlive)
 const activeViewAtom = Atom.make<PullRequestView>(initialPullRequestView(config.repository)).pipe(Atom.keepAlive)
 const queueLoadCacheAtom = Atom.make<Partial<Record<string, PullRequestLoad>>>({}).pipe(Atom.keepAlive)
@@ -155,12 +162,15 @@ const pullRequestsAtom = githubRuntime.atom(
 
 			yield* Atom.set(retryProgressAtom, initialRetryProgress)
 			const cache = yield* Atom.get(queueLoadCacheAtom)
+			const existingLoad = cache[cacheKey]
+			const data = refreshPullRequestPage(existingLoad?.data, page.items)
+			const preservingLoadedTail = Boolean(existingLoad && existingLoad.data.length > page.items.length)
 			const load = {
 				view,
-				data: mergeCachedDetails(page.items, cache[cacheKey]?.data),
+				data,
 				fetchedAt: new Date(),
-				endCursor: page.endCursor,
-				hasNextPage: page.hasNextPage && page.items.length < config.prFetchLimit,
+				endCursor: preservingLoadedTail ? existingLoad?.endCursor ?? page.endCursor : page.endCursor,
+				hasNextPage: (preservingLoadedTail ? existingLoad?.hasNextPage ?? page.hasNextPage : page.hasNextPage) && data.length < config.prFetchLimit,
 			} satisfies PullRequestLoad
 			const nextCache = { ...cache }
 			delete nextCache[cacheKey]
@@ -672,10 +682,15 @@ export const App = () => {
 	)
 	const groupStarts = useAtomValue(groupStartsAtom)
 	const getCurrentGroupIndex = (current: number) => {
-		for (let index = groupStarts.length - 1; index >= 0; index--) {
-			if (groupStarts[index]! <= current) return index
+		if (groupStarts.length === 0) return 0
+		let low = 0
+		let high = groupStarts.length - 1
+		while (low < high) {
+			const mid = (low + high + 1) >>> 1
+			if (groupStarts[mid]! <= current) low = mid
+			else high = mid - 1
 		}
-		return 0
+		return low
 	}
 	const summaryRight = pullRequestLoad?.fetchedAt
 		? `updated ${formatShortDate(pullRequestLoad.fetchedAt)} ${formatTimestamp(pullRequestLoad.fetchedAt)}`
@@ -1723,7 +1738,7 @@ export const App = () => {
 		return true
 	}
 	const runCommandById = (id: string, options: { readonly notifyDisabled?: boolean } = {}) => {
-		const command = appCommands.find((command) => command.id === id)
+		const command = appCommands.find((entry) => entry.id === id)
 		return command ? runCommand(command, options) : false
 	}
 	const commandPaletteCommands = commandPaletteActive ? filterCommands(appCommands.filter((command) => command.id !== "command.open" && commandEnabled(command)), commandPalette.query) : []
@@ -2452,9 +2467,9 @@ export const App = () => {
 	const labelModalLeft = centeredOffset(contentWidth, labelModalWidth)
 	const labelModalTop = centeredOffset(terminalHeight, labelModalHeight)
 	const sizedModal = (minW: number, maxW: number, padX: number, maxH: number) => {
-		const width = Math.min(maxW, Math.max(minW, contentWidth - padX))
-		const height = Math.min(maxH, terminalHeight - 4)
-		return { width, height, left: centeredOffset(contentWidth, width), top: centeredOffset(terminalHeight, height) }
+		const w = Math.min(maxW, Math.max(minW, contentWidth - padX))
+		const h = Math.min(maxH, terminalHeight - 4)
+		return { width: w, height: h, left: centeredOffset(contentWidth, w), top: centeredOffset(terminalHeight, h) }
 	}
 	const closeLayout = sizedModal(46, 68, 12, 12)
 	const closeModalWidth = closeLayout.width
