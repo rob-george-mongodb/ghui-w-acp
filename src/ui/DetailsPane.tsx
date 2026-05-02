@@ -4,7 +4,7 @@ import { formatRelativeDate } from "../date.js"
 import type { CheckItem, PullRequestItem } from "../domain.js"
 import { colors, type ThemeId } from "./colors.js"
 import { diffStatText } from "./diff.js"
-import { centerCell, Divider, fitCell, PlainLine, TextLine } from "./primitives.js"
+import { centerCell, Divider, Filler, fitCell, PlainLine, TextLine } from "./primitives.js"
 import { labelColor, labelTextColor, reviewLabel, shortRepoName, statusColor } from "./pullRequests.js"
 
 interface PreviewLine {
@@ -158,8 +158,6 @@ const bodyPreview = (body: string, width: number, limit = DETAIL_BODY_LINES): Ar
 
 	return preview.slice(0, limit)
 }
-
-const BlankRow = () => <box height={1} />
 
 const DiffStats = ({ pullRequest }: { pullRequest: PullRequestItem }) => {
 	if (!pullRequest.detailLoaded) return <span fg={colors.muted}>loading details</span>
@@ -414,9 +412,9 @@ export const DetailBody = ({
 		const bottomRows = Math.max(0, bodyLines - topRows - 1)
 		return (
 			<box flexDirection="column" paddingLeft={1} paddingRight={1} height={bodyLines}>
-				{Array.from({ length: topRows }, (_, index) => <BlankRow key={`top-${index}`} />)}
+				<Filler rows={topRows} prefix="top" />
 				<PlainLine text={centerCell(`${loadingIndicator} Loading pull request details`, contentWidth)} fg={colors.muted} />
-				{Array.from({ length: bottomRows }, (_, index) => <BlankRow key={`bottom-${index}`} />)}
+				<Filler rows={bottomRows} prefix="bottom" />
 			</box>
 		)
 	}
@@ -482,9 +480,9 @@ export const LoadingPane = ({ content, width, height }: { content: DetailPlaceho
 
 	return (
 		<box height={height} flexDirection="column">
-			{Array.from({ length: topRows }, (_, index) => <BlankRow key={`top-${index}`} />)}
+			<Filler rows={topRows} prefix="top" />
 			<StatusCard content={content} width={width} />
-			{Array.from({ length: bottomRows }, (_, index) => <BlankRow key={`bottom-${index}`} />)}
+			<Filler rows={bottomRows} prefix="bottom" />
 		</box>
 	)
 }
@@ -525,9 +523,7 @@ export const DetailsPane = ({
 				<>
 					<DetailPlaceholder content={placeholderContent} paneWidth={paneWidth} />
 					<box flexDirection="column" paddingLeft={1} paddingRight={1}>
-						{Array.from({ length: bodyLines }, (_, index) => (
-							<BlankRow key={index} />
-						))}
+						<Filler rows={bodyLines} prefix="empty" />
 					</box>
 				</>
 			)}
