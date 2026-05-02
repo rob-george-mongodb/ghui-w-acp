@@ -27,6 +27,23 @@ const DiffStats = ({ pullRequest }: { pullRequest: PullRequestItem }) => {
 	)
 }
 
+const DiffPaneHeader = ({ pullRequest, paneWidth }: { pullRequest: PullRequestItem; paneWidth: number }) => {
+	const stats = diffStatText(pullRequest)
+	const headerWidth = Math.max(24, paneWidth - 2)
+	const leftHeader = `#${pullRequest.number} ${shortRepoName(pullRequest.repository)}`
+	const headerGap = Math.max(2, headerWidth - leftHeader.length - stats.length)
+	return (
+		<box height={1} paddingLeft={1} paddingRight={1}>
+			<TextLine>
+				<span fg={colors.count}>#{pullRequest.number}</span>
+				<span fg={colors.muted}> {shortRepoName(pullRequest.repository)}</span>
+				<span fg={colors.muted}>{" ".repeat(headerGap)}</span>
+				<DiffStats pullRequest={pullRequest} />
+			</TextLine>
+		</box>
+	)
+}
+
 const FileStats = ({ stats }: { stats: DiffFileStats }) => {
 	return (
 		<>
@@ -109,22 +126,10 @@ export const PullRequestDiffPane = ({
 		return <LoadingPane content={{ title: "No pull request selected", hint: "Press esc to go back" }} width={paneWidth} height={height} />
 	}
 
-	const stats = diffStatText(pullRequest)
-	const headerWidth = Math.max(24, paneWidth - 2)
-	const leftHeader = `#${pullRequest.number} ${shortRepoName(pullRequest.repository)}`
-	const headerGap = Math.max(2, headerWidth - leftHeader.length - stats.length)
-
 	if (!diffState || diffState._tag === "Loading") {
 		return (
 			<box height={height} flexDirection="column">
-				<box height={1} paddingLeft={1} paddingRight={1}>
-					<TextLine>
-						<span fg={colors.count}>#{pullRequest.number}</span>
-						<span fg={colors.muted}> {shortRepoName(pullRequest.repository)}</span>
-						<span fg={colors.muted}>{" ".repeat(headerGap)}</span>
-						<DiffStats pullRequest={pullRequest} />
-					</TextLine>
-				</box>
+				<DiffPaneHeader pullRequest={pullRequest} paneWidth={paneWidth} />
 				<Divider width={paneWidth} />
 				<LoadingPane content={{ title: `${loadingIndicator} Loading diff`, hint: "Fetching patch from GitHub" }} width={paneWidth} height={Math.max(1, height - 2)} />
 			</box>
@@ -184,14 +189,7 @@ export const PullRequestDiffPane = ({
 
 	return (
 		<box height={height} flexDirection="column">
-			<box height={1} paddingLeft={1} paddingRight={1}>
-				<TextLine>
-					<span fg={colors.count}>#{pullRequest.number}</span>
-					<span fg={colors.muted}> {shortRepoName(pullRequest.repository)}</span>
-					<span fg={colors.muted}>{" ".repeat(headerGap)}</span>
-					<DiffStats pullRequest={pullRequest} />
-				</TextLine>
-			</box>
+			<DiffPaneHeader pullRequest={pullRequest} paneWidth={paneWidth} />
 			<Divider width={paneWidth} />
 			<scrollbox ref={scrollRef} focused={!commentMode} flexGrow={1} scrollY scrollX={false} onMouseDown={handleDiffMouseDown}>
 				{stackedFiles.map((stackedFile) => (
