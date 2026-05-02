@@ -33,4 +33,5 @@ export {
 	type PureDispatchOptions,
 	pureTick,
 } from "./pure-dispatch.ts"
+export { type Scrollable, scrollCommands } from "./scroll.ts"
 export { type BindingSnapshot, snapshot } from "./snapshot.ts"
