@@ -4,7 +4,7 @@ import type { AppCommand } from "../commands.js"
 import { clampCommandIndex } from "../commands.js"
 import { colors } from "./colors.js"
 import { scrollTopForVisibleLine } from "./diff.js"
-import { centerCell, Filler, fitCell, PlainLine, StandardModal, standardModalDims, TextLine, trimCell } from "./primitives.js"
+import { centerCell, Filler, fitCell, HintRow, PlainLine, StandardModal, standardModalDims, TextLine, trimCell } from "./primitives.js"
 
 const scopeLabels = {
 	Global: "App",
@@ -100,7 +100,7 @@ export const CommandPalette = ({
 					<span fg={query.length > 0 ? colors.text : colors.muted}>{fitCell(queryText, queryWidth)}</span>
 				</TextLine>
 			}
-			footer={<PlainLine text="up/down select  enter run  ctrl-u clear  ctrl-w word  esc close" fg={colors.muted} />}
+			footer={<HintRow items={[{ key: "↑↓", label: "select" }, { key: "enter", label: "run" }, { key: "ctrl-u", label: "clear" }, { key: "ctrl-w", label: "word" }, { key: "esc", label: "close" }]} />}
 		>
 			{rows.length === 0 ? (
 				<>
