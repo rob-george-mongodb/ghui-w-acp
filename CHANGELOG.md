@@ -1,5 +1,11 @@
 # @kitlangton/ghui
 
+## 0.2.1
+
+### Patch Changes
+
+- Keep the pull request details conversation connector aligned while the details pane scrolls.
+
 ## 0.2.0
 
 ### Minor Changes

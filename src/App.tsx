@@ -8,7 +8,7 @@ import { Cause, Effect, Layer, Schedule } from "effect"
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult"
 import * as Atom from "effect/unstable/reactivity/Atom"
 import * as AtomRegistry from "effect/unstable/reactivity/AtomRegistry"
-import { useContext, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { buildAppCommands } from "./appCommands.js"
 import type { AppCommand } from "./commands.js"
 import { clampCommandIndex, commandEnabled, defineCommand, filterCommands, sortCommandsByScope } from "./commands.js"
@@ -603,6 +603,7 @@ export const App = () => {
 	const [terminalFocused, setTerminalFocused] = useState(true)
 	const [startupLoadComplete, setStartupLoadComplete] = useState(false)
 	const [loadingMoreKey, setLoadingMoreKey] = useState<string | null>(null)
+	const [detailPreviewScrollTop, setDetailPreviewScrollTop] = useState(0)
 	const usernameResult = useAtomValue(usernameAtom)
 	const loadRepoLabels = useAtomSet(listRepoLabelsAtom, { mode: "promise" })
 	const loadPullRequestPage = useAtomSet(listOpenPullRequestPageAtom, { mode: "promise" })
@@ -644,6 +645,7 @@ export const App = () => {
 	const maybeRefreshPullRequestsRef = useRef<(minimumAgeMs: number) => void>(() => {})
 	const detailScrollRef = useRef<ScrollBoxRenderable | null>(null)
 	const detailPreviewScrollRef = useRef<ScrollBoxRenderable | null>(null)
+	const detailPreviewScrollTopRef = useRef(0)
 	const diffScrollRef = useRef<ScrollBoxRenderable | null>(null)
 	const prListScrollRef = useRef<ScrollBoxRenderable | null>(null)
 	const diffRenderableRefs = useRef(new Map<number, DiffRenderable>())
@@ -1071,6 +1073,10 @@ export const App = () => {
 		setDiffPreferredSide(null)
 		setDiffCommentRangeStartIndex(null)
 		detailPreviewScrollRef.current?.scrollTo({ x: 0, y: 0 })
+		if (detailPreviewScrollTopRef.current !== 0) {
+			detailPreviewScrollTopRef.current = 0
+			setDetailPreviewScrollTop(0)
+		}
 	}, [selectedIndex])
 
 	useEffect(() => {
@@ -1211,8 +1217,6 @@ export const App = () => {
 		title: `${loadingIndicator} Loading pull request details`,
 		hint: `${selectedPullRequest.repository} #${selectedPullRequest.number}`,
 	} : detailPlaceholderContent
-	const detailJunctions = isSelectedPullRequestDetailLoading ? [] : getDetailJunctionRows(selectedPullRequest, rightPaneWidth, true, rightContentWidth, selectedConversationItems, selectedConversationStatus)
-
 	const halfPage = Math.max(1, Math.floor(wideBodyHeight / 2))
 
 	const loadPullRequestComments = (pullRequest: PullRequestItem, force = false) => {
@@ -1334,8 +1338,23 @@ export const App = () => {
 		setDiffFileIndex((current) => current === nextIndex ? current : nextIndex)
 	}
 
-	const scrollDetailPreviewBy = (y: number) => detailPreviewScrollRef.current?.scrollBy({ x: 0, y })
-	const scrollDetailPreviewTo = (y: number) => detailPreviewScrollRef.current?.scrollTo({ x: 0, y })
+	const syncDetailPreviewScrollState = useCallback(() => {
+		const scrollTop = detailPreviewScrollRef.current?.scrollTop
+		if (scrollTop === undefined) return
+		const nextTop = Math.max(0, Math.floor(scrollTop))
+		if (detailPreviewScrollTopRef.current === nextTop) return
+		detailPreviewScrollTopRef.current = nextTop
+		setDetailPreviewScrollTop(nextTop)
+	}, [])
+
+	const scrollDetailPreviewBy = (y: number) => {
+		detailPreviewScrollRef.current?.scrollBy({ x: 0, y })
+		syncDetailPreviewScrollState()
+	}
+	const scrollDetailPreviewTo = (y: number) => {
+		detailPreviewScrollRef.current?.scrollTo({ x: 0, y })
+		syncDetailPreviewScrollState()
+	}
 
 	const ensureDiffLineVisible = (line: number) => {
 		const scroll = diffScrollRef.current
@@ -1353,6 +1372,16 @@ export const App = () => {
 		const interval = globalThis.setInterval(syncDiffScrollState, 80)
 		return () => globalThis.clearInterval(interval)
 	}, [diffFullView, stackedDiffFiles])
+
+	useLayoutEffect(() => {
+		if (!isWideLayout || detailFullView || diffFullView) return
+		const scroll = detailPreviewScrollRef.current
+		if (!scroll) return
+		const sync = () => { syncDetailPreviewScrollState() }
+		scroll.verticalScrollBar.on("change", sync)
+		syncDetailPreviewScrollState()
+		return () => { scroll.verticalScrollBar.off("change", sync) }
+	}, [isWideLayout, detailFullView, diffFullView, syncDetailPreviewScrollState])
 
 	const jumpDiffFile = (delta: 1 | -1) => {
 		if (readyDiffFiles.length === 0) return
@@ -2284,6 +2313,16 @@ export const App = () => {
 	const wideDetailBodyViewportHeight = Math.max(1, wideBodyHeight - wideDetailHeaderHeight)
 	const wideDetailBodyHeight = getScrollableDetailBodyHeight(selectedPullRequest, rightContentWidth, selectedConversationItems, selectedConversationStatus)
 	const wideDetailBodyScrollable = wideDetailBodyHeight > wideDetailBodyViewportHeight
+	const detailJunctions = isSelectedPullRequestDetailLoading ? [] : getDetailJunctionRows({
+		pullRequest: selectedPullRequest,
+		paneWidth: rightPaneWidth,
+		showChecks: true,
+		contentWidth: rightContentWidth,
+		conversationItems: selectedConversationItems,
+		conversationStatus: selectedConversationStatus,
+		bodyScrollTop: detailPreviewScrollTop,
+		bodyViewportHeight: wideDetailBodyViewportHeight,
+	})
 
 	const prListProps = {
 		groups: visibleGroups,

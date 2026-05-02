@@ -345,35 +345,43 @@ const ChecksSection = ({ checks, contentWidth }: { checks: readonly CheckItem[];
 
 const conversationDividerBodyRow = (pullRequest: PullRequestItem, contentWidth: number, conversationItems: readonly PullRequestConversationItem[], conversationStatus: DetailConversationStatus) => {
 	if (!pullRequest.detailLoaded) return null
-	const summaryRows = bodyPreview(pullRequest.body, contentWidth, DETAIL_BODY_SCROLL_LIMIT)
-	const conversationRows = conversationPreview({
-		items: conversationItems,
-		status: conversationStatus,
-		width: contentWidth,
-		limit: Math.max(0, DETAIL_BODY_SCROLL_LIMIT - summaryRows.length - 1),
-	})
-	return conversationRows.length > 0 ? summaryRows.length : null
+	const dividerIndex = detailBodyPreview({ pullRequest, contentWidth, limit: DETAIL_BODY_SCROLL_LIMIT, conversationItems, conversationStatus })
+		.findIndex((line) => line.divider === true)
+	return dividerIndex >= 0 ? dividerIndex : null
 }
 
-export const getDetailJunctionRows = (
-	pullRequest: PullRequestItem | null,
-	paneWidth: number,
+export const getDetailJunctionRows = ({
+	pullRequest,
+	paneWidth,
 	showChecks = false,
-	contentWidth = Math.max(1, paneWidth - 2),
-	conversationItems: readonly PullRequestConversationItem[] = [],
-	conversationStatus: DetailConversationStatus = "idle",
-): readonly number[] => {
+	contentWidth,
+	conversationItems = [],
+	conversationStatus = "idle",
+	bodyScrollTop = 0,
+	bodyViewportHeight = Number.POSITIVE_INFINITY,
+}: {
+	readonly pullRequest: PullRequestItem | null
+	readonly paneWidth: number
+	readonly showChecks?: boolean
+	readonly contentWidth?: number
+	readonly conversationItems?: readonly PullRequestConversationItem[]
+	readonly conversationStatus?: DetailConversationStatus
+	readonly bodyScrollTop?: number
+	readonly bodyViewportHeight?: number
+}): readonly number[] => {
 	if (!pullRequest) return [DETAIL_PLACEHOLDER_ROWS]
+	const resolvedContentWidth = contentWidth ?? Math.max(1, paneWidth - 2)
 	const titleLines = wrapText(pullRequest.title, Math.max(1, paneWidth - 2)).length
 	const detailDividerRow = 1 + titleLines + 1
 	const checks = deduplicateChecks(pullRequest.checks)
 	const checksDividerRow = checks.length > 0 ? detailDividerRow + 1 + checksRowCount(checks) + 1 : -1
 	const headerHeight = getDetailHeaderHeight(pullRequest, paneWidth, showChecks)
-	const conversationDivider = conversationDividerBodyRow(pullRequest, contentWidth, conversationItems, conversationStatus)
+	const conversationDivider = conversationDividerBodyRow(pullRequest, resolvedContentWidth, conversationItems, conversationStatus)
+	const visibleConversationDivider = conversationDivider === null ? null : conversationDivider - Math.max(0, Math.floor(bodyScrollTop))
 	return [
 		detailDividerRow,
 		showChecks && checks.length > 0 ? checksDividerRow : -1,
-		conversationDivider === null ? -1 : headerHeight + conversationDivider,
+		visibleConversationDivider === null || visibleConversationDivider < 0 || visibleConversationDivider >= bodyViewportHeight ? -1 : headerHeight + visibleConversationDivider,
 	].filter((row) => row >= 0)
 }
 
