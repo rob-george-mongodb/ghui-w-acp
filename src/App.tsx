@@ -1857,6 +1857,31 @@ export const App = () => {
 		],
 	}), [])
 
+	// LabelModal: nav keys via keymap; text input stays in useKeyboard fallback.
+	const labelModalActiveRef = useRef(false)
+	labelModalActiveRef.current = labelModalActive
+	const labelModalCtxRef = useRef({ toggleLabelAtIndex, setLabelModal, filteredCount: 0 })
+	labelModalCtxRef.current = {
+		toggleLabelAtIndex,
+		setLabelModal,
+		filteredCount: filterLabels(labelModal.availableLabels, labelModal.query).length,
+	}
+	const moveLabelSelection = (delta: -1 | 1) => labelModalCtxRef.current.setLabelModal((current) => {
+		const max = Math.max(0, labelModalCtxRef.current.filteredCount - 1)
+		return { ...current, selectedIndex: Math.max(0, Math.min(max, current.selectedIndex + delta)) }
+	})
+	useBindings(() => ({
+		enabled: () => labelModalActiveRef.current,
+		bindings: [
+			{ key: "escape", cmd: () => closeActiveModalRef.current() },
+			{ key: "return", cmd: () => labelModalCtxRef.current.toggleLabelAtIndex() },
+			{ key: "up", cmd: () => moveLabelSelection(-1) },
+			{ key: "k", cmd: () => moveLabelSelection(-1) },
+			{ key: "down", cmd: () => moveLabelSelection(1) },
+			{ key: "j", cmd: () => moveLabelSelection(1) },
+		],
+	}), [])
+
 	useKeyboard((key) => {
 		if (commandPaletteActive) {
 			if (key.name === "escape" || key.ctrl && key.name === "c") {
@@ -2062,36 +2087,12 @@ export const App = () => {
 
 
 		if (labelModalActive) {
-			if (key.name === "escape") {
-				closeActiveModal()
-				return
-			}
-			if (key.name === "return" || key.name === "enter") {
-				toggleLabelAtIndex()
-				return
-			}
-			if (key.name === "up" || key.name === "k") {
-				setLabelModal((current) => ({
-					...current,
-					selectedIndex: Math.max(0, current.selectedIndex - 1),
-				}))
-				return
-			}
-			if (key.name === "down" || key.name === "j") {
-				const filtered = filterLabels(labelModal.availableLabels, labelModal.query)
-				setLabelModal((current) => ({
-					...current,
-					selectedIndex: Math.min(Math.max(0, filtered.length - 1), current.selectedIndex + 1),
-				}))
-				return
-			}
 			if (isSingleLineInputKey(key)) {
 				setLabelModal((current) => ({
 					...current,
 					query: editSingleLineInput(current.query, key) ?? current.query,
 					selectedIndex: 0,
 				}))
-				return
 			}
 			return
 		}
