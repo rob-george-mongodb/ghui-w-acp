@@ -119,13 +119,6 @@ const appendPullRequestPage = (existing: readonly PullRequestItem[], incoming: r
 	return [...existing, ...mergedIncoming.filter((pullRequest) => !seen.has(pullRequest.url))]
 }
 
-const refreshPullRequestPage = (existing: readonly PullRequestItem[] | undefined, incoming: readonly PullRequestItem[]) => {
-	if (!existing) return incoming
-	const refreshed = mergeCachedDetails(incoming, existing)
-	const refreshedUrls = new Set(refreshed.map((pullRequest) => pullRequest.url))
-	return [...refreshed, ...existing.filter((pullRequest) => !refreshedUrls.has(pullRequest.url))]
-}
-
 const retryProgressAtom = Atom.make<RetryProgress>(initialRetryProgress).pipe(Atom.keepAlive)
 const activeViewAtom = Atom.make<PullRequestView>(initialPullRequestView(config.repository)).pipe(Atom.keepAlive)
 const queueLoadCacheAtom = Atom.make<Partial<Record<string, PullRequestLoad>>>({}).pipe(Atom.keepAlive)
@@ -163,14 +156,13 @@ const pullRequestsAtom = githubRuntime.atom(
 			yield* Atom.set(retryProgressAtom, initialRetryProgress)
 			const cache = yield* Atom.get(queueLoadCacheAtom)
 			const existingLoad = cache[cacheKey]
-			const data = refreshPullRequestPage(existingLoad?.data, page.items)
-			const preservingLoadedTail = Boolean(existingLoad && existingLoad.data.length > page.items.length)
+			const data = mergeCachedDetails(page.items, existingLoad?.data)
 			const load = {
 				view,
 				data,
 				fetchedAt: new Date(),
-				endCursor: preservingLoadedTail ? existingLoad?.endCursor ?? page.endCursor : page.endCursor,
-				hasNextPage: (preservingLoadedTail ? existingLoad?.hasNextPage ?? page.hasNextPage : page.hasNextPage) && data.length < config.prFetchLimit,
+				endCursor: page.endCursor,
+				hasNextPage: page.hasNextPage && data.length < config.prFetchLimit,
 			} satisfies PullRequestLoad
 			const nextCache = { ...cache }
 			delete nextCache[cacheKey]
@@ -323,9 +315,10 @@ const removePullRequestLabelAtom = githubRuntime.fn<{ readonly repository: strin
 const toggleDraftAtom = githubRuntime.fn<{ readonly repository: string; readonly number: number; readonly isDraft: boolean }>()((input) =>
 	GitHubService.use((github) => github.toggleDraftStatus(input.repository, input.number, input.isDraft))
 )
-const getPullRequestDiffAtom = githubRuntime.fn<{ readonly repository: string; readonly number: number }>()((input) =>
-	GitHubService.use((github) => github.getPullRequestDiff(input.repository, input.number))
-)
+const pullRequestDiffAtom = Atom.family((key: string) => {
+	const { repository, number } = parsePullRequestDiffAtomKey(key)
+	return githubRuntime.atom(GitHubService.use((github) => github.getPullRequestDiff(repository, number)))
+})
 const listPullRequestCommentsAtom = githubRuntime.fn<{ readonly repository: string; readonly number: number }>()((input) =>
 	GitHubService.use((github) => github.listPullRequestComments(input.repository, input.number))
 )
@@ -375,12 +368,16 @@ const pullRequestMetadataText = (pullRequest: PullRequestItem) => {
 }
 
 const pullRequestDetailKey = (pullRequest: PullRequestItem) => `${pullRequest.url}:${pullRequest.headRefOid}`
-const pullRequestDetailAtomKey = (pullRequest: PullRequestItem) => `${pullRequest.repository}\u0000${pullRequest.number}\u0000${pullRequest.headRefOid}`
-const parsePullRequestDetailAtomKey = (key: string) => {
+const pullRequestRevisionAtomKey = (pullRequest: PullRequestItem) => `${pullRequest.repository}\u0000${pullRequest.number}\u0000${pullRequest.headRefOid}`
+const parsePullRequestRevisionAtomKey = (key: string, label: string) => {
 	const [repository, number] = key.split("\u0000")
-	if (!repository || !number) throw new Error(`Invalid pull request detail key: ${key}`)
+	if (!repository || !number) throw new Error(`Invalid pull request ${label} key: ${key}`)
 	return { repository, number: Number.parseInt(number, 10) }
 }
+const pullRequestDetailAtomKey = pullRequestRevisionAtomKey
+const pullRequestDiffAtomKey = pullRequestRevisionAtomKey
+const parsePullRequestDetailAtomKey = (key: string) => parsePullRequestRevisionAtomKey(key, "detail")
+const parsePullRequestDiffAtomKey = (key: string) => parsePullRequestRevisionAtomKey(key, "diff")
 
 const isShiftG = (key: { readonly name: string; readonly shift?: boolean }) => key.name === "G" || key.name === "g" && key.shift
 
@@ -559,7 +556,6 @@ export const App = () => {
 	const addPullRequestLabel = useAtomSet(addPullRequestLabelAtom, { mode: "promise" })
 	const removePullRequestLabel = useAtomSet(removePullRequestLabelAtom, { mode: "promise" })
 	const toggleDraftStatus = useAtomSet(toggleDraftAtom, { mode: "promise" })
-	const getPullRequestDiff = useAtomSet(getPullRequestDiffAtom, { mode: "promise" })
 	const listPullRequestComments = useAtomSet(listPullRequestCommentsAtom, { mode: "promise" })
 	const getPullRequestMergeInfo = useAtomSet(getPullRequestMergeInfoAtom, { mode: "promise" })
 	const mergePullRequest = useAtomSet(mergePullRequestAtom, { mode: "promise" })
@@ -1083,7 +1079,9 @@ export const App = () => {
 		if (!force && existing && (existing._tag === "Ready" || existing._tag === "Loading")) return
 
 		setPullRequestDiffCache((current) => ({ ...current, [key]: PullRequestDiffState.Loading() }))
-		void getPullRequestDiff({ repository: pullRequest.repository, number: pullRequest.number })
+		const atom = pullRequestDiffAtom(pullRequestDiffAtomKey(pullRequest))
+		if (force) registry.refresh(atom)
+		void Effect.runPromise(AtomRegistry.getResult(registry, atom, { suspendOnWaiting: true }))
 			.then((patch) => {
 				setPullRequestDiffCache((current) => ({
 					...current,
@@ -2432,14 +2430,14 @@ export const App = () => {
 	const wideFullscreenDetailScrollable = getDetailsPaneHeight({
 		pullRequest: selectedPullRequest,
 		contentWidth: fullscreenContentWidth,
-		bodyLines: fullscreenBodyLines,
+		bodyLines: DETAIL_BODY_SCROLL_LIMIT,
 		paneWidth: contentWidth,
 		showChecks: true,
 	}) > wideBodyHeight
 	const narrowFullscreenDetailScrollable = getDetailsPaneHeight({
 		pullRequest: selectedPullRequest,
 		contentWidth: fullscreenContentWidth,
-		bodyLines: fullscreenBodyLines,
+		bodyLines: DETAIL_BODY_SCROLL_LIMIT,
 		paneWidth: contentWidth,
 	}) > wideBodyHeight
 	const wideDetailHeaderHeight = getDetailHeaderHeight(selectedPullRequest, rightPaneWidth, true)
@@ -2554,6 +2552,7 @@ export const App = () => {
 							viewerUsername={username}
 							contentWidth={fullscreenContentWidth}
 							bodyLines={fullscreenBodyLines}
+							bodyLineLimit={DETAIL_BODY_SCROLL_LIMIT}
 							paneWidth={contentWidth}
 							showChecks
 							placeholderContent={detailPlaceholderContent}
@@ -2598,6 +2597,7 @@ export const App = () => {
 							viewerUsername={username}
 							contentWidth={fullscreenContentWidth}
 							bodyLines={fullscreenBodyLines}
+							bodyLineLimit={DETAIL_BODY_SCROLL_LIMIT}
 							paneWidth={contentWidth}
 							placeholderContent={detailPlaceholderContent}
 							loadingIndicator={loadingIndicator}

@@ -5,7 +5,7 @@ export const mergeCachedDetails = (fresh: readonly PullRequestItem[], cached: re
 	const cachedByUrl = new Map(cached.map((pullRequest) => [pullRequest.url, pullRequest]))
 	return fresh.map((pullRequest) => {
 		const cachedPullRequest = cachedByUrl.get(pullRequest.url)
-		if (!cachedPullRequest?.detailLoaded) return pullRequest
+		if (!cachedPullRequest?.detailLoaded || cachedPullRequest.headRefOid !== pullRequest.headRefOid) return pullRequest
 		return {
 			...pullRequest,
 			body: cachedPullRequest.body,
@@ -13,7 +13,7 @@ export const mergeCachedDetails = (fresh: readonly PullRequestItem[], cached: re
 			additions: cachedPullRequest.additions,
 			deletions: cachedPullRequest.deletions,
 			changedFiles: cachedPullRequest.changedFiles,
-			detailLoaded: pullRequest.detailLoaded,
+			detailLoaded: true,
 		} satisfies PullRequestItem
 	})
 }

@@ -56,6 +56,27 @@ describe("mergeCachedDetails", () => {
 			changedFiles: 3,
 			checkStatus: "passing",
 			checkSummary: "checks 9/9",
+			detailLoaded: true,
+		})
+	})
+
+	test("does not preserve cached details after the pull request head changes", () => {
+		const cached = pullRequest({
+			headRefOid: "old-sha",
+			body: "cached body",
+			detailLoaded: true,
+		})
+		const fresh = pullRequest({
+			headRefOid: "new-sha",
+			body: "",
+			detailLoaded: false,
+		})
+
+		const [merged] = mergeCachedDetails([fresh], [cached])
+
+		expect(merged).toMatchObject({
+			headRefOid: "new-sha",
+			body: "",
 			detailLoaded: false,
 		})
 	})

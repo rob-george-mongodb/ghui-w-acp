@@ -59,4 +59,16 @@ describe("stacked diff helpers", () => {
 		expect(scrollTopForVisibleLine(40, 20, 40)).toBe(39)
 		expect(scrollTopForVisibleLine(40, 20, 59)).toBe(41)
 	})
+
+	test("detects shell diffs as bash", () => {
+		const [file] = splitPatchFiles(`diff --git a/script.zsh b/script.zsh
+--- a/script.zsh
++++ b/script.zsh
+@@ -1,2 +1,2 @@
+ echo before
+-echo old
++echo new`)
+
+		expect(file?.filetype).toBe("bash")
+	})
 })

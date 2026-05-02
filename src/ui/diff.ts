@@ -1,4 +1,4 @@
-import { parseColor, SyntaxStyle } from "@opentui/core"
+import { parseColor, pathToFiletype, SyntaxStyle } from "@opentui/core"
 import { Data, Schema } from "effect"
 import type { DiffCommentSide, PullRequestItem, PullRequestReviewComment } from "../domain.js"
 import { colors } from "./colors.js"
@@ -72,45 +72,6 @@ export const createDiffSyntaxStyle = () => SyntaxStyle.fromStyles({
 	punctuation: { fg: parseColor(colors.text) },
 	default: { fg: parseColor(colors.text) },
 })
-
-const extensionFiletypes: Record<string, string> = {
-	c: "c",
-	cc: "cpp",
-	cpp: "cpp",
-	cs: "csharp",
-	css: "css",
-	go: "go",
-	h: "c",
-	hpp: "cpp",
-	html: "html",
-	java: "java",
-	js: "javascript",
-	jsx: "javascript",
-	json: "json",
-	kt: "kotlin",
-	md: "markdown",
-	mjs: "javascript",
-	py: "python",
-	rs: "rust",
-	rb: "ruby",
-	sh: "bash",
-	svelte: "svelte",
-	toml: "toml",
-	ts: "typescript",
-	tsx: "typescript",
-	txt: "text",
-	vue: "vue",
-	yaml: "yaml",
-	yml: "yaml",
-	zig: "zig",
-}
-
-const filetypeForPath = (path: string) => {
-	const basename = path.split("/").at(-1) ?? path
-	if (basename === "Dockerfile") return "dockerfile"
-	const extension = basename.includes(".") ? basename.split(".").at(-1)?.toLowerCase() : undefined
-	return extension ? extensionFiletypes[extension] : undefined
-}
 
 const unquoteDiffPath = (path: string) => path.replace(/^"|"$/g, "").replace(/^a\//, "").replace(/^b\//, "")
 
@@ -207,11 +168,11 @@ export const splitPatchFiles = (patch: string): readonly DiffFilePatch[] => {
 		const end = index + 1 < matches.length ? matches[index + 1]!.index ?? trimmed.length : trimmed.length
 		const filePatch = normalizeHunkLineCounts(trimmed.slice(start, end).trimEnd())
 		const name = patchFileName(filePatch)
-		return { name, filetype: filetypeForPath(name), patch: filePatch }
+		return { name, filetype: pathToFiletype(name), patch: filePatch }
 	})
 }
 
-export const pullRequestDiffKey = (pullRequest: PullRequestItem) => `${pullRequest.repository}#${pullRequest.number}`
+export const pullRequestDiffKey = (pullRequest: PullRequestItem) => `${pullRequest.repository}#${pullRequest.number}:${pullRequest.headRefOid}`
 
 export const safeDiffFileIndex = (files: readonly DiffFilePatch[], index: number) =>
 	files.length > 0 ? Math.max(0, Math.min(index, files.length - 1)) : 0
