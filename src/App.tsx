@@ -1998,6 +1998,25 @@ export const App = () => {
 		],
 	}), [])
 
+	// FilterMode: escape cancels, return commits.
+	const filterModeRef = useRef(false)
+	filterModeRef.current = filterMode
+	const filterCtxRef = useRef({ filterQuery, filterDraft, setFilterQuery, setFilterDraft, setFilterMode })
+	filterCtxRef.current = { filterQuery, filterDraft, setFilterQuery, setFilterDraft, setFilterMode }
+	useBindings(() => ({
+		enabled: () => filterModeRef.current,
+		bindings: [
+			{ key: "escape", cmd: () => {
+				filterCtxRef.current.setFilterDraft(filterCtxRef.current.filterQuery)
+				filterCtxRef.current.setFilterMode(false)
+			} },
+			{ key: "return", cmd: () => {
+				filterCtxRef.current.setFilterQuery(filterCtxRef.current.filterDraft)
+				filterCtxRef.current.setFilterMode(false)
+			} },
+		],
+	}), [])
+
 	useKeyboard((key) => {
 		if (commandPaletteActive) {
 			if (isSingleLineInputKey(key)) {
@@ -2280,20 +2299,10 @@ export const App = () => {
 		}
 
 		if (filterMode) {
-			if (key.name === "escape") {
-				setFilterDraft(filterQuery)
-				setFilterMode(false)
-				return
-			}
-			if (key.name === "return" || key.name === "enter") {
-				setFilterQuery(filterDraft)
-				setFilterMode(false)
-				return
-			}
 			if (isSingleLineInputKey(key)) {
 				setFilterDraft((current) => editSingleLineInput(current, key) ?? current)
-				return
 			}
+			return
 		}
 
 		if (key.name === "tab") {
