@@ -4,6 +4,7 @@ import { formatRelativeDate } from "../date.js"
 import type { CheckItem, PullRequestItem } from "../domain.js"
 import { colors, type ThemeId } from "./colors.js"
 import { diffStatText } from "./diff.js"
+import { DiffStats } from "./diffStats.js"
 import { centerCell, Divider, Filler, fitCell, PlainLine, TextLine } from "./primitives.js"
 import { labelColor, labelTextColor, reviewLabel, shortRepoName, statusColor } from "./pullRequests.js"
 
@@ -157,29 +158,6 @@ const bodyPreview = (body: string, width: number, limit = DETAIL_BODY_LINES): Ar
 	}
 
 	return preview.slice(0, limit)
-}
-
-const DiffStats = ({ pullRequest }: { pullRequest: PullRequestItem }) => {
-	if (!pullRequest.detailLoaded) return <span fg={colors.muted}>loading details</span>
-	const files = pullRequest.changedFiles === 1 ? "1 file" : `${pullRequest.changedFiles} files`
-	type Part = { key: string; text: string; color: string }
-	const rawParts: Array<Part | null> = [
-		pullRequest.additions > 0 ? { key: "additions", text: `+${pullRequest.additions}`, color: colors.status.passing } : null,
-		pullRequest.deletions > 0 ? { key: "deletions", text: `-${pullRequest.deletions}`, color: colors.status.failing } : null,
-		{ key: "files", text: files, color: colors.muted },
-	]
-	const parts = rawParts.filter((part): part is Part => part !== null)
-
-	return (
-		<>
-			{parts.map((part, index) => (
-				<Fragment key={part.key}>
-					{index > 0 ? <span fg={colors.muted}> </span> : null}
-					<span fg={part.color}>{part.text}</span>
-				</Fragment>
-			))}
-		</>
-	)
 }
 
 const deduplicateChecks = (checks: readonly CheckItem[]): CheckItem[] => {

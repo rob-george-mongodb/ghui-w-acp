@@ -4,28 +4,9 @@ import type { DiffCommentSide, PullRequestItem, PullRequestReviewComment } from 
 import { colors, type ThemeId } from "./colors.js"
 import { createDiffSyntaxStyle, diffFileStats, diffFileStatsText, diffStatText, stackedDiffFileAtLine, type DiffFileStats, type DiffView, type DiffWrapMode, type PullRequestDiffState, type StackedDiffCommentAnchor, type StackedDiffFilePatch } from "./diff.js"
 import { LoadingPane, StatusCard } from "./DetailsPane.js"
+import { DiffStats } from "./diffStats.js"
 import { Divider, fitCell, PlainLine, TextLine } from "./primitives.js"
 import { shortRepoName } from "./pullRequests.js"
-
-const DiffStats = ({ pullRequest }: { pullRequest: PullRequestItem }) => {
-	if (!pullRequest.detailLoaded) return <span fg={colors.muted}>loading details</span>
-	const files = pullRequest.changedFiles === 1 ? "1 file" : `${pullRequest.changedFiles} files`
-	type Part = { key: string; text: string; color: string }
-	const rawParts: Array<Part | null> = [
-		pullRequest.additions > 0 ? { key: "additions", text: `+${pullRequest.additions}`, color: colors.status.passing } : null,
-		pullRequest.deletions > 0 ? { key: "deletions", text: `-${pullRequest.deletions}`, color: colors.status.failing } : null,
-		{ key: "files", text: files, color: colors.muted },
-	]
-	const parts = rawParts.filter((part): part is Part => part !== null)
-
-	return (
-		<>
-			{parts.map((part, index) => (
-				<span key={part.key} fg={part.color}>{`${index > 0 ? " " : ""}${part.text}`}</span>
-			))}
-		</>
-	)
-}
 
 const DiffPaneHeader = ({ pullRequest, paneWidth }: { pullRequest: PullRequestItem; paneWidth: number }) => {
 	const stats = diffStatText(pullRequest)
