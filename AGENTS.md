@@ -45,7 +45,12 @@
 
 - Modal dividers must connect to the side borders with junction characters (`├` / `┤`). When adding a horizontal divider inside a modal body, thread the divider's row index through `ModalFrame`'s `junctionRows` so the side bars render `├`/`┤` at that row instead of `│`. Inline `<Divider>`s without a corresponding junction row look detached and are wrong.
 
+## Plans
+
+Larger features and redesigns are captured in markdown under `plans/` before work starts. Each plan has Why / What / API mapping / Open questions / Status. When taking on something non-trivial, check `plans/` first; when sketching a future-direction idea, write a plan there rather than only mentioning it in chat or commits. See `plans/README.md` for the format and index.
+
 ## Future Work
 
 - Add a conversation panel focus/expand flow for reading and navigating longer PR conversations.
 - Consider click-drag support in diffs to select a comment range.
+- See `plans/` for tracked feature plans (e.g. queued PR reviews).
