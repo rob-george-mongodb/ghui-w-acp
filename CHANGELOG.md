@@ -1,5 +1,11 @@
 # @kitlangton/ghui
 
+## 0.4.5
+
+### Patch Changes
+
+- Support repository merge methods in the merge modal, including merge commits, rebase merges, auto-merge, admin merges, and draft mark-ready confirmation.
+
 ## 0.4.4
 
 ### Patch Changes
