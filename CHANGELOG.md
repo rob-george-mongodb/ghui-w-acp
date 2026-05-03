@@ -1,5 +1,11 @@
 # @kitlangton/ghui
 
+## 0.3.2
+
+### Patch Changes
+
+- Keep the private keymap workspace available for CI typechecking without publishing it as a runtime dependency.
+
 ## 0.3.1
 
 ### Patch Changes
