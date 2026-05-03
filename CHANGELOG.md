@@ -1,5 +1,13 @@
 # @kitlangton/ghui
 
+## 0.4.4
+
+### Patch Changes
+
+- 98fc852: Treat terminal `enter` key events the same as `return` key events.
+- 5c5576d: Wrap keyboard selection at the ends of picker-style modals.
+- 8e357ee: Add Vague as a selectable color theme.
+
 ## 0.4.3
 
 ### Patch Changes
