@@ -1,6 +1,7 @@
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
+import { binaryPackageName as binaryPackageNameForTarget, currentReleaseTargetId, findReleaseTarget } from "./release-targets.js"
 
 type CommandResult = {
 	readonly stdout: string
@@ -9,8 +10,9 @@ type CommandResult = {
 
 const root = process.cwd()
 const rootPackageJson = (await Bun.file(join(root, "package.json")).json()) as { name: string; version: string }
-const targetId = process.platform === "darwin" ? `darwin-${process.arch}` : process.platform === "linux" ? `linux-${process.arch}` : null
-const binaryPackageName = targetId ? `${rootPackageJson.name}-${targetId}` : null
+const targetId = currentReleaseTargetId()
+const target = findReleaseTarget(targetId)
+const binaryPackageName = target ? binaryPackageNameForTarget(rootPackageJson.name, target) : null
 
 const run = async (cmd: readonly string[], cwd: string): Promise<CommandResult> => {
 	const proc = Bun.spawnSync({ cmd: [...cmd], cwd, stdout: "pipe", stderr: "pipe" })

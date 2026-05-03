@@ -68,6 +68,8 @@ jobs:
       - run: bun run build:standalone -- ${{ matrix.target }}
 
       - run: bun run build:npm-packages -- ${{ matrix.target }}
+        env:
+          GHUI_REUSE_RELEASE_BINARY: "1"
 
       - name: Publish npm binary package
         run: |

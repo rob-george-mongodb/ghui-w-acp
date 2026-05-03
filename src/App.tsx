@@ -143,7 +143,7 @@ import {
 	type SubmitReviewModalState,
 	type ThemeModalState,
 } from "./ui/modals.js"
-import { groupBy, reviewLabel } from "./ui/pullRequests.js"
+import { groupBy, pullRequestMetadataText } from "./ui/pullRequests.js"
 import { PullRequestDiffPane } from "./ui/PullRequestDiffPane.js"
 import { buildPullRequestListRows, pullRequestListRowIndex, PullRequestList } from "./ui/PullRequestList.js"
 import { editSingleLineInput, isSingleLineInputKey, printableKeyText, singleLineText } from "./ui/singleLineInput.js"
@@ -466,14 +466,6 @@ const pullRequestFilterScore = (pullRequest: PullRequestItem, query: string) => 
 		return matchIndex >= 0 ? [index * 1000 + matchIndex] : []
 	})
 	return scores.length > 0 ? Math.min(...scores) : null
-}
-
-const pullRequestMetadataText = (pullRequest: PullRequestItem) => {
-	const lines = [pullRequest.title, `${pullRequest.repository} #${pullRequest.number}`, pullRequest.url]
-	const review = reviewLabel(pullRequest)
-	if (review) lines.push(`review: ${review}`)
-	if (pullRequest.checkSummary) lines.push(pullRequest.checkSummary)
-	return lines.join("\n")
 }
 
 const pullRequestDetailKey = (pullRequest: PullRequestItem) => `${pullRequest.url}:${pullRequest.headRefOid}`

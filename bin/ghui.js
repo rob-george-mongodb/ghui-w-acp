@@ -22,6 +22,18 @@ const archMap = {
 	x64: "x64",
 }
 
+const help = `ghui ${packageJson.version}
+
+Terminal UI for GitHub pull requests.
+
+Usage:
+  ghui              Start the TUI
+  ghui upgrade      Upgrade ghui to the latest npm release
+  ghui -v, --version
+                    Print the installed version
+  ghui -h, --help   Show this help message
+`
+
 const run = (target, args = process.argv.slice(2)) => {
 	const result = childProcess.spawnSync(target, args, { stdio: "inherit" })
 	if (result.error) {
@@ -35,6 +47,16 @@ if (process.env.GHUI_BIN_PATH) {
 	run(process.env.GHUI_BIN_PATH)
 }
 
+if (process.argv[2] === "-h" || process.argv[2] === "--help" || process.argv[2] === "help") {
+	console.log(help)
+	process.exit(0)
+}
+
+if (process.argv[2] === "-v" || process.argv[2] === "--version" || process.argv[2] === "version") {
+	console.log(packageJson.version)
+	process.exit(0)
+}
+
 if (process.argv[2] === "upgrade") {
 	const result = childProcess.spawnSync("npm", ["install", "-g", `${packageJson.name}@latest`], { stdio: "inherit" })
 	if (result.error) {
@@ -46,17 +68,31 @@ if (process.argv[2] === "upgrade") {
 
 const scriptPath = fs.realpathSync(__filename)
 const scriptDir = path.dirname(scriptPath)
-const cached = path.join(scriptDir, ".ghui")
-
-if (fs.existsSync(cached)) {
-	run(cached)
-}
 
 const platform = platformMap[os.platform()]
 const arch = archMap[os.arch()]
 
+const isMusl = () => {
+	if (os.platform() !== "linux") return false
+	try {
+		if (fs.existsSync("/etc/alpine-release")) return true
+	} catch {}
+	try {
+		const result = childProcess.spawnSync("ldd", ["--version"], { encoding: "utf8" })
+		return `${result.stdout ?? ""}${result.stderr ?? ""}`.toLowerCase().includes("musl")
+	} catch {
+		return false
+	}
+}
+
 if (!platform || !arch) {
 	console.error(`Unsupported platform for ${packageJson.name}: ${os.platform()}-${os.arch()}`)
+	process.exit(1)
+}
+
+if (platform === "linux" && isMusl()) {
+	console.error(`${packageJson.name} does not publish musl Linux binaries yet.`)
+	console.error("Use a glibc-based Linux distribution, Homebrew on Linux, or the source checkout with Bun.")
 	process.exit(1)
 }
 
