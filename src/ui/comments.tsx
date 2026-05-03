@@ -8,6 +8,8 @@ export interface CommentSegment {
 	readonly text: string
 	readonly fg: string
 	readonly bold?: boolean
+	readonly underline?: boolean
+	readonly url?: string
 }
 
 export interface CommentDisplayLine {
@@ -112,19 +114,18 @@ export const firstCommentBodyLine = (body: string) => {
 	return (newlineIndex >= 0 ? text.slice(0, newlineIndex) : text).trim() || "(empty comment)"
 }
 
-export const CommentSegmentsLine = ({ segments }: { segments: readonly CommentSegment[] }) => (
+export const CommentSegmentsLine = ({ segments, hoveredUrl }: { segments: readonly CommentSegment[]; hoveredUrl?: string | null }) => (
 	<TextLine>
-		{segments.map((segment, index) =>
-			segment.bold ? (
-				<span key={index} fg={segment.fg} attributes={TextAttributes.BOLD}>
+		{segments.map((segment, index) => {
+			const attributes = (segment.bold ? TextAttributes.BOLD : 0) | (segment.underline ? TextAttributes.UNDERLINE : 0)
+			const isHovered = segment.url !== undefined && segment.url === hoveredUrl
+			const fg = isHovered ? colors.accent : segment.fg
+			return (
+				<span key={index} fg={fg} {...(attributes !== 0 ? { attributes } : {})} {...(segment.url !== undefined ? { link: { url: segment.url } } : {})}>
 					{segment.text}
 				</span>
-			) : (
-				<span key={index} fg={segment.fg}>
-					{segment.text}
-				</span>
-			),
-		)}
+			)
+		})}
 	</TextLine>
 )
 

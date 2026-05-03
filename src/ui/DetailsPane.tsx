@@ -1,13 +1,20 @@
-import { TextAttributes } from "@opentui/core"
-import { Fragment, useMemo } from "react"
+import { TextAttributes, type BoxRenderable, type MouseEvent } from "@opentui/core"
+import { useRenderer } from "@opentui/react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { formatRelativeDate } from "../date.js"
 import type { CheckItem, PullRequestConversationItem, PullRequestItem } from "../domain.js"
 import { colors, type ThemeId } from "./colors.js"
 import { commentCountText, commentDisplayRows, CommentSegmentsLine, type CommentSegment } from "./comments.js"
 import { diffStatText } from "./diff.js"
 import { DiffStats } from "./diffStats.js"
+import { collectUrlPositions, findUrlAt, inlineSegments, type InlinePalette } from "./inlineSegments.js"
 import { centerCell, Divider, Filler, fitCell, PaddedRow, PlainLine, TextLine } from "./primitives.js"
 import { labelColor, labelTextColor, reviewLabel, shortRepoName, statusColor } from "./pullRequests.js"
+
+const inlinePalette = (): InlinePalette => ({ text: colors.text, inlineCode: colors.inlineCode, link: colors.link, count: colors.count })
+
+// Pixel-column conversion accounts for the body box's paddingLeft={1}.
+const BODY_PADDING_LEFT = 1
 
 interface PreviewLine {
 	readonly divider?: boolean
@@ -25,7 +32,6 @@ export const DETAIL_BODY_SCROLL_LIMIT = 1_000
 
 export type DetailConversationStatus = "idle" | "loading" | "ready"
 
-const pullRequestReferencePattern = /(#[0-9]+)/g
 const codeFencePattern = /^```\s*([a-zA-Z0-9_-]+)?/
 const codeTokenPattern =
 	/(\/\/.*|`(?:\\.|[^`])*`|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\b(?:async|await|break|case|catch|class|const|continue|default|else|export|extends|finally|for|from|function|if|import|interface|let|new|return|switch|throw|try|type|var|while|yield)\b|\b(?:true|false|null|undefined)\b|\b\d+(?:\.\d+)?\b)/g
@@ -49,23 +55,7 @@ export const wrapText = (text: string, width: number): string[] => {
 	return lines.length > 0 ? lines : [""]
 }
 
-const parseInlineSegments = (text: string, fg: string, bold = false): PreviewLine["segments"] => {
-	const parts = text.split(/(`[^`]+`)/g).filter((part) => part.length > 0)
-	return parts.flatMap((part) => {
-		if (part.startsWith("`") && part.endsWith("`")) {
-			return [{ text: part.slice(1, -1), fg: colors.inlineCode, bold }]
-		}
-
-		return part
-			.split(pullRequestReferencePattern)
-			.filter((segment) => segment.length > 0)
-			.map((segment) => ({
-				text: segment,
-				fg: segment.match(/^#[0-9]+$/) ? colors.count : fg,
-				bold,
-			}))
-	})
-}
+const parseInlineSegments = (text: string, fg: string, bold = false): readonly CommentSegment[] => inlineSegments(text, fg, bold, inlinePalette())
 
 const parseCodeSegments = (text: string): PreviewLine["segments"] => {
 	const segments: Array<PreviewLine["segments"][number]> = []
@@ -570,6 +560,7 @@ export const DetailBody = ({
 	conversationStatus = "idle",
 	loadingIndicator,
 	themeId,
+	onLinkOpen,
 }: {
 	pullRequest: PullRequestItem
 	contentWidth: number
@@ -580,11 +571,23 @@ export const DetailBody = ({
 	conversationStatus?: DetailConversationStatus
 	loadingIndicator: string
 	themeId: ThemeId
+	onLinkOpen?: (url: string) => void
 }) => {
+	const renderer = useRenderer()
+	const [hoveredUrl, setHoveredUrl] = useState<string | null>(null)
+
 	const previewLines = useMemo(
 		() => detailBodyPreview({ pullRequest, contentWidth, limit: bodyLineLimit, conversationItems, conversationStatus }),
 		[pullRequest, contentWidth, bodyLineLimit, conversationItems, conversationStatus, themeId],
 	)
+
+	const urlPositions = useMemo(() => collectUrlPositions(previewLines), [previewLines])
+
+	useEffect(() => {
+		if (hoveredUrl === null) return
+		renderer.setMousePointer("pointer")
+		return () => renderer.setMousePointer("default")
+	}, [hoveredUrl, renderer])
 
 	if (!pullRequest.detailLoaded) {
 		const topRows = Math.max(0, Math.floor((bodyLines - 1) / 2))
@@ -598,14 +601,36 @@ export const DetailBody = ({
 		)
 	}
 
+	const handleMouseMove = function (this: BoxRenderable, event: MouseEvent) {
+		if (urlPositions.length === 0) return
+		const localX = event.x - this.x - BODY_PADDING_LEFT
+		const localY = event.y - this.y
+		const next = findUrlAt(urlPositions, localY, localX)
+		if (next !== hoveredUrl) setHoveredUrl(next)
+	}
+
+	const handleMouseOut = () => {
+		if (hoveredUrl !== null) setHoveredUrl(null)
+	}
+
+	const handleMouseDown = function (this: BoxRenderable, event: MouseEvent) {
+		if (!onLinkOpen || event.button !== 0) return
+		const localX = event.x - this.x - BODY_PADDING_LEFT
+		const localY = event.y - this.y
+		const url = findUrlAt(urlPositions, localY, localX)
+		if (url === null) return
+		event.stopPropagation()
+		onLinkOpen(url)
+	}
+
 	return (
-		<box flexDirection="column" height={previewLines.length}>
+		<box flexDirection="column" height={previewLines.length} onMouseMove={handleMouseMove} onMouseOut={handleMouseOut} onMouseDown={handleMouseDown}>
 			{previewLines.map((line, index) =>
 				line.divider === true ? (
 					<Divider key={`${pullRequest.url}-${index}`} width={paneWidth} />
 				) : (
 					<PaddedRow key={`${pullRequest.url}-${index}`}>
-						<CommentSegmentsLine segments={line.segments} />
+						<CommentSegmentsLine segments={line.segments} hoveredUrl={hoveredUrl} />
 					</PaddedRow>
 				),
 			)}
@@ -677,6 +702,7 @@ export const DetailsPane = ({
 	placeholderContent,
 	loadingIndicator,
 	themeId,
+	onLinkOpen,
 }: {
 	pullRequest: PullRequestItem | null
 	viewerUsername: string | null
@@ -690,6 +716,7 @@ export const DetailsPane = ({
 	placeholderContent: DetailPlaceholderContent
 	loadingIndicator: string
 	themeId: ThemeId
+	onLinkOpen?: (url: string) => void
 }) => {
 	const contentHeight = getDetailsPaneHeight({ pullRequest, contentWidth, bodyLines: bodyLineLimit, paneWidth, showChecks, conversationItems, conversationStatus })
 
@@ -708,6 +735,7 @@ export const DetailsPane = ({
 						conversationStatus={conversationStatus}
 						loadingIndicator={loadingIndicator}
 						themeId={themeId}
+						{...(onLinkOpen ? { onLinkOpen } : {})}
 					/>
 				</>
 			) : (

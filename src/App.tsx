@@ -462,6 +462,7 @@ const createPullRequestCommentAtom = githubRuntime.fn<CreatePullRequestCommentIn
 const submitPullRequestReviewAtom = githubRuntime.fn<SubmitPullRequestReviewInput>()((input) => GitHubService.use((github) => github.submitPullRequestReview(input)))
 const copyToClipboardAtom = githubRuntime.fn<string>()((text) => Clipboard.use((clipboard) => clipboard.copy(text)))
 const openInBrowserAtom = githubRuntime.fn<PullRequestItem>()((pullRequest) => BrowserOpener.use((browser) => browser.openPullRequest(pullRequest)))
+const openUrlAtom = githubRuntime.fn<string>()((url) => BrowserOpener.use((browser) => browser.openUrl(url)))
 
 const pickInitialMergeMethod = (allowed: RepositoryMergeMethods | null, preferred: PullRequestMergeMethod | undefined): PullRequestMergeMethod => {
 	if (!allowed) return preferred ?? pullRequestMergeMethods[0]
@@ -727,6 +728,7 @@ export const App = () => {
 	const submitPullRequestReview = useAtomSet(submitPullRequestReviewAtom, { mode: "promise" })
 	const copyToClipboard = useAtomSet(copyToClipboardAtom, { mode: "promise" })
 	const openInBrowser = useAtomSet(openInBrowserAtom, { mode: "promise" })
+	const openUrl = useAtomSet(openUrlAtom, { mode: "promise" })
 	const terminalWidth = width ?? 100
 	const terminalHeight = height ?? 24
 	const contentWidth = Math.max(1, terminalWidth)
@@ -1809,6 +1811,12 @@ export const App = () => {
 	const openSelectedPullRequestInBrowser = (pullRequest: PullRequestItem) => {
 		void openInBrowser(pullRequest)
 			.then(() => flashNotice(`Opened #${pullRequest.number} in browser`))
+			.catch((error) => flashNotice(errorMessage(error)))
+	}
+
+	const openLinkInBrowser = (url: string) => {
+		void openUrl(url)
+			.then(() => flashNotice(`Opened ${url}`))
 			.catch((error) => flashNotice(errorMessage(error)))
 	}
 
@@ -2938,6 +2946,7 @@ export const App = () => {
 									conversationStatus={selectedConversationStatus}
 									loadingIndicator={loadingIndicator}
 									themeId={themeId}
+									onLinkOpen={openLinkInBrowser}
 								/>
 							</scrollbox>
 						</>
@@ -2950,6 +2959,7 @@ export const App = () => {
 							placeholderContent={detailPlaceholderContent}
 							loadingIndicator={loadingIndicator}
 							themeId={themeId}
+							onLinkOpen={openLinkInBrowser}
 						/>
 					)}
 				</box>
@@ -2986,6 +2996,7 @@ export const App = () => {
 										conversationStatus={selectedConversationStatus}
 										loadingIndicator={loadingIndicator}
 										themeId={themeId}
+										onLinkOpen={openLinkInBrowser}
 									/>
 								</scrollbox>
 							</>
@@ -3009,6 +3020,7 @@ export const App = () => {
 									conversationStatus={selectedConversationStatus}
 									loadingIndicator={loadingIndicator}
 									themeId={themeId}
+									onLinkOpen={openLinkInBrowser}
 								/>
 							</scrollbox>
 						</>
@@ -3021,6 +3033,7 @@ export const App = () => {
 							placeholderContent={detailPlaceholderContent}
 							loadingIndicator={loadingIndicator}
 							themeId={themeId}
+							onLinkOpen={openLinkInBrowser}
 						/>
 					)}
 				</box>
@@ -3036,6 +3049,7 @@ export const App = () => {
 						placeholderContent={detailPlaceholderContent}
 						loadingIndicator={loadingIndicator}
 						themeId={themeId}
+						onLinkOpen={openLinkInBrowser}
 					/>
 					<Divider width={contentWidth} />
 					<box flexGrow={1} flexDirection="column">
