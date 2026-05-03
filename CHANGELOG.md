@@ -1,5 +1,12 @@
 # @kitlangton/ghui
 
+## 0.4.3
+
+### Patch Changes
+
+- bbf93d7: Require an explicit modal confirmation before changing a pull request between draft and ready for review.
+- 7a2317c: Clarify Homebrew installation and release automation documentation.
+
 ## 0.4.2
 
 ### Patch Changes
