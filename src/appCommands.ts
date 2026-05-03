@@ -1,6 +1,6 @@
 import type { AppCommand } from "./commands.js"
 import { defineCommand } from "./commands.js"
-import type { LoadStatus, PullRequestItem } from "./domain.js"
+import type { LoadStatus, PullRequestItem, PullRequestReviewEvent } from "./domain.js"
 import type { DiffView, DiffWhitespaceMode, DiffWrapMode } from "./ui/diff.js"
 import { type PullRequestView, viewEquals, viewLabel, viewMode } from "./pullRequestViews.js"
 
@@ -27,7 +27,7 @@ interface AppCommandActions {
 	readonly toggleDiffCommentRange: () => void
 	readonly moveDiffCommentThread: (delta: 1 | -1) => void
 	readonly openDiffCommentModal: () => void
-	readonly openSubmitReviewModal: () => void
+	readonly openSubmitReviewModal: (initialEvent?: PullRequestReviewEvent) => void
 	readonly togglePullRequestDraftStatus: () => void
 	readonly openLabelModal: () => void
 	readonly openMergeModal: () => void
@@ -91,27 +91,14 @@ export const buildAppCommands = ({
 	const selectedPullRequestLabel = selectedPullRequest ? `#${selectedPullRequest.number} ${selectedPullRequest.repository}` : "No pull request selected"
 	const noPullRequestReason = selectedPullRequest ? null : "Select a pull request first."
 	const noOpenPullRequestReason = selectedPullRequest?.state === "open" ? null : selectedPullRequest ? "Pull request is not open." : noPullRequestReason
-	const diffReadyReason = selectedPullRequest
-		? diffReady ? null : "Load the diff before running this command."
-		: noPullRequestReason
+	const diffReadyReason = selectedPullRequest ? (diffReady ? null : "Load the diff before running this command.") : noPullRequestReason
 	const diffOpenReadyReason = diffFullView ? diffReadyReason : "Open a diff first."
-	const selectedDiffLineReason = diffFullView && diffReady
-		? selectedDiffCommentAnchorLabel ? null : "No diff line selected."
-		: diffOpenReadyReason
-	const diffThreadReason = diffFullView && diffReady
-		? hasDiffCommentThreads ? null : "No diff comments loaded."
-		: diffOpenReadyReason
-	const changedFilesReason = diffFullView && diffReady
-		? readyDiffFileCount > 0 ? null : "No changed files loaded."
-		: diffOpenReadyReason
-	const submitReviewReason = diffFullView && diffReady ? noOpenPullRequestReason : diffOpenReadyReason
-	const loadMoreDisabledReason = isLoadingMorePullRequests
-		? "Already loading more pull requests."
-		: hasMorePullRequests ? null : "No more pull requests loaded by this view."
+	const selectedDiffLineReason = diffFullView && diffReady ? (selectedDiffCommentAnchorLabel ? null : "No diff line selected.") : diffOpenReadyReason
+	const diffThreadReason = diffFullView && diffReady ? (hasDiffCommentThreads ? null : "No diff comments loaded.") : diffOpenReadyReason
+	const changedFilesReason = diffFullView && diffReady ? (readyDiffFileCount > 0 ? null : "No changed files loaded.") : diffOpenReadyReason
+	const loadMoreDisabledReason = isLoadingMorePullRequests ? "Already loading more pull requests." : hasMorePullRequests ? null : "No more pull requests loaded by this view."
 
-	const forSelected = (
-		command: Omit<AppCommand, "subtitle" | "disabledReason"> & { readonly requireOpen?: boolean },
-	): AppCommand => {
+	const forSelected = (command: Omit<AppCommand, "subtitle" | "disabledReason"> & { readonly requireOpen?: boolean }): AppCommand => {
 		const { requireOpen, ...rest } = command
 		return defineCommand({
 			...rest,
@@ -174,15 +161,17 @@ export const buildAppCommands = ({
 			keywords: ["repo", "repository", "owner", "github"],
 			run: actions.openRepositoryPicker,
 		}),
-		...activeViews.map((view) => defineCommand({
-			id: view._tag === "Repository" ? "view.repository" : `view.${view.mode}`,
-			title: `Show ${viewLabel(view)} view`,
-			scope: "View" as const,
-			subtitle: viewEquals(view, activeView) ? "Already showing this view" : "Switch pull request view",
-			keywords: [viewMode(view), viewLabel(view), "queue", "view"],
-			disabledReason: viewEquals(view, activeView) ? "Already showing this view." : null,
-			run: () => actions.switchViewTo(view),
-		})),
+		...activeViews.map((view) =>
+			defineCommand({
+				id: view._tag === "Repository" ? "view.repository" : `view.${view.mode}`,
+				title: `Show ${viewLabel(view)} view`,
+				scope: "View" as const,
+				subtitle: viewEquals(view, activeView) ? "Already showing this view" : "Switch pull request view",
+				keywords: [viewMode(view), viewLabel(view), "queue", "view"],
+				disabledReason: viewEquals(view, activeView) ? "Already showing this view." : null,
+				run: () => actions.switchViewTo(view),
+			}),
+		),
 		defineCommand({
 			id: "pull.load-more",
 			title: "Load more pull requests",
@@ -339,15 +328,14 @@ export const buildAppCommands = ({
 			keywords: ["review", "reply"],
 			run: actions.openDiffCommentModal,
 		}),
-		defineCommand({
-			id: "diff.submit-review",
-			title: "Submit pull request review",
-			scope: "Diff",
-			subtitle: selectedPullRequestLabel,
-			shortcut: "R",
-			disabledReason: submitReviewReason,
-			keywords: ["review", "approve", "request changes"],
-			run: actions.openSubmitReviewModal,
+		forSelected({
+			id: "pull.submit-review",
+			title: "Review pull request",
+			scope: "Pull request",
+			shortcut: "shift-r",
+			requireOpen: true,
+			keywords: ["review", "approve", "request changes", "comment"],
+			run: () => actions.openSubmitReviewModal("APPROVE"),
 		}),
 		forSelected({
 			id: "pull.toggle-draft",

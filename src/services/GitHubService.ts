@@ -1,6 +1,22 @@
 import { Context, Effect, Layer, Schema } from "effect"
 import { config } from "../config.js"
-import { DiffCommentSide, pullRequestQueueSearchQualifier, type CheckItem, type CreatePullRequestCommentInput, type ListPullRequestPageInput, type Mergeable, type PullRequestConversationItem, type PullRequestItem, type PullRequestMergeAction, type PullRequestMergeInfo, type PullRequestPage, type PullRequestQueueMode, type PullRequestReviewComment, type ReviewStatus, type SubmitPullRequestReviewInput } from "../domain.js"
+import {
+	DiffCommentSide,
+	pullRequestQueueSearchQualifier,
+	type CheckItem,
+	type CreatePullRequestCommentInput,
+	type ListPullRequestPageInput,
+	type Mergeable,
+	type PullRequestConversationItem,
+	type PullRequestItem,
+	type PullRequestMergeAction,
+	type PullRequestMergeInfo,
+	type PullRequestPage,
+	type PullRequestQueueMode,
+	type PullRequestReviewComment,
+	type ReviewStatus,
+	type SubmitPullRequestReviewInput,
+} from "../domain.js"
 import { getMergeActionDefinition } from "../mergeActions.js"
 import { CommandError, CommandRunner, type JsonParseError } from "./CommandRunner.js"
 
@@ -66,9 +82,11 @@ const RawPullRequestNodeSchema = Schema.Struct({
 
 const PullRequestDetailResponseSchema = Schema.Struct({
 	data: Schema.Struct({
-		repository: Schema.NullOr(Schema.Struct({
-			pullRequest: Schema.NullOr(RawPullRequestNodeSchema),
-		})),
+		repository: Schema.NullOr(
+			Schema.Struct({
+				pullRequest: Schema.NullOr(RawPullRequestNodeSchema),
+			}),
+		),
 	}),
 })
 
@@ -89,12 +107,14 @@ const SearchResponseSchema = <Item extends Schema.Top>(item: Item) =>
 
 const RepositoryPullRequestsResponseSchema = Schema.Struct({
 	data: Schema.Struct({
-		repository: Schema.NullOr(Schema.Struct({
-			pullRequests: Schema.Struct({
-				nodes: Schema.Array(Schema.NullOr(RawPullRequestSummaryNodeSchema)),
-				pageInfo: PageInfoSchema,
+		repository: Schema.NullOr(
+			Schema.Struct({
+				pullRequests: Schema.Struct({
+					nodes: Schema.Array(Schema.NullOr(RawPullRequestSummaryNodeSchema)),
+					pageInfo: PageInfoSchema,
+				}),
 			}),
-		})),
+		),
 	}),
 })
 
@@ -118,9 +138,13 @@ const PullRequestCommentSchema = Schema.Struct({
 	html_url: OptionalNullableString,
 	url: OptionalNullableString,
 	created_at: OptionalNullableString,
-	user: Schema.optionalKey(Schema.NullOr(Schema.Struct({
-		login: OptionalNullableString,
-	}))),
+	user: Schema.optionalKey(
+		Schema.NullOr(
+			Schema.Struct({
+				login: OptionalNullableString,
+			}),
+		),
+	),
 	path: OptionalNullableString,
 	line: OptionalNullableNumber,
 	original_line: OptionalNullableNumber,
@@ -134,20 +158,16 @@ const PullRequestFileSchema = Schema.Struct({
 	patch: OptionalNullableString,
 })
 
-const CommentsResponseSchema = Schema.Union([
-	Schema.Array(PullRequestCommentSchema),
-	Schema.Array(Schema.Array(PullRequestCommentSchema)),
-])
+const CommentsResponseSchema = Schema.Union([Schema.Array(PullRequestCommentSchema), Schema.Array(Schema.Array(PullRequestCommentSchema))])
 
-const PullRequestFilesResponseSchema = Schema.Union([
-	Schema.Array(PullRequestFileSchema),
-	Schema.Array(Schema.Array(PullRequestFileSchema)),
-])
+const PullRequestFilesResponseSchema = Schema.Union([Schema.Array(PullRequestFileSchema), Schema.Array(Schema.Array(PullRequestFileSchema))])
 
-const RepoLabelsResponseSchema = Schema.Array(Schema.Struct({
-	name: Schema.String,
-	color: Schema.String,
-}))
+const RepoLabelsResponseSchema = Schema.Array(
+	Schema.Struct({
+		name: Schema.String,
+		color: Schema.String,
+	}),
+)
 
 type RawPullRequestSummaryNode = Schema.Schema.Type<typeof RawPullRequestSummaryNodeSchema>
 type RawPullRequestNode = Schema.Schema.Type<typeof RawPullRequestNodeSchema>
@@ -302,16 +322,14 @@ const CHECK_CONCLUSION_BY_RAW: Record<string, NonNullable<CheckItem["conclusion"
 	TIMED_OUT: "timed_out",
 }
 
-const normalizeCheckStatus = (raw: string | null | undefined): CheckItem["status"] =>
-	raw ? CHECK_STATUS_BY_RAW[raw] ?? "pending" : "pending"
+const normalizeCheckStatus = (raw: string | null | undefined): CheckItem["status"] => (raw ? (CHECK_STATUS_BY_RAW[raw] ?? "pending") : "pending")
 
-const normalizeCheckConclusion = (raw: string | null | undefined): CheckItem["conclusion"] =>
-	raw ? CHECK_CONCLUSION_BY_RAW[raw] ?? null : null
+const normalizeCheckConclusion = (raw: string | null | undefined): CheckItem["conclusion"] => (raw ? (CHECK_CONCLUSION_BY_RAW[raw] ?? null) : null)
 
 const getContextStatus = (context: RawCheckContext): CheckItem["status"] =>
 	RawCheckContextSchema.match(context, {
 		CheckRun: (run) => normalizeCheckStatus(run.status),
-		StatusContext: (status) => status.state === "PENDING" ? "in_progress" : "completed",
+		StatusContext: (status) => (status.state === "PENDING" ? "in_progress" : "completed"),
 	})
 
 const STATUS_CONTEXT_CONCLUSION: Record<string, NonNullable<CheckItem["conclusion"]>> = {
@@ -338,7 +356,7 @@ const getCheckInfoFromContexts = (contexts: readonly RawCheckContext[]): Pick<Pu
 	const checks: CheckItem[] = []
 
 	for (const check of contexts) {
-		const name = check.__typename === "CheckRun" ? check.name ?? "check" : check.context ?? "check"
+		const name = check.__typename === "CheckRun" ? (check.name ?? "check") : (check.context ?? "check")
 		const status = getContextStatus(check)
 		const conclusion = getContextConclusion(check)
 
@@ -419,7 +437,7 @@ const searchQuery = (mode: PullRequestQueueMode, repository: string | null) => {
 }
 
 const pullRequestPage = <Item>(connection: PullRequestConnection<Item>, parse: (node: Item) => PullRequestItem): PullRequestPage => ({
-	items: connection.nodes.flatMap((node) => node ? [parse(node)] : []),
+	items: connection.nodes.flatMap((node) => (node ? [parse(node)] : [])),
 	endCursor: connection.pageInfo.endCursor,
 	hasNextPage: connection.pageInfo.hasNextPage && connection.pageInfo.endCursor !== null,
 })
@@ -474,12 +492,11 @@ const parseIssueComments = (response: Schema.Schema.Type<typeof CommentsResponse
 	flattenSlurpedPages(response).map(parseIssueComment)
 
 const flattenSlurpedPages = <Item>(response: readonly Item[] | readonly (readonly Item[])[]): readonly Item[] =>
-	Array.isArray(response[0]) ? (response as readonly (readonly Item[])[]).flat() : response as readonly Item[]
+	Array.isArray(response[0]) ? (response as readonly (readonly Item[])[]).flat() : (response as readonly Item[])
 
-const parsePullRequestFiles = (response: Schema.Schema.Type<typeof PullRequestFilesResponseSchema>): readonly RawPullRequestFile[] =>
-	flattenSlurpedPages(response)
+const parsePullRequestFiles = (response: Schema.Schema.Type<typeof PullRequestFilesResponseSchema>): readonly RawPullRequestFile[] => flattenSlurpedPages(response)
 
-const diffPath = (path: string) => /\s|"/.test(path) ? JSON.stringify(path) : path
+const diffPath = (path: string) => (/\s|"/.test(path) ? JSON.stringify(path) : path)
 
 const prefixedDiffPath = (prefix: "a" | "b", path: string) => diffPath(`${prefix}/${path}`)
 
@@ -498,8 +515,7 @@ const fileHeaderPatch = (file: RawPullRequestFile) => {
 	return lines.join("\n")
 }
 
-export const pullRequestFilesToPatch = (files: readonly RawPullRequestFile[]) =>
-	files.map(fileHeaderPatch).join("\n")
+export const pullRequestFilesToPatch = (files: readonly RawPullRequestFile[]) => files.map(fileHeaderPatch).join("\n")
 
 const fallbackCreatedComment = (input: CreatePullRequestCommentInput): PullRequestReviewComment => ({
 	id: `created:${input.repository}:${input.number}:${input.path}:${input.side}:${input.line}:${Date.now()}`,
@@ -519,8 +535,7 @@ const MERGEABLE_BY_RAW: Record<string, Mergeable> = {
 	CONFLICTING: "conflicting",
 }
 
-const normalizeMergeable = (value: string): Mergeable =>
-	MERGEABLE_BY_RAW[value] ?? "unknown"
+const normalizeMergeable = (value: string): Mergeable => MERGEABLE_BY_RAW[value] ?? "unknown"
 
 const REVIEW_EVENT_CLI_FLAG = {
 	COMMENT: "--comment",
@@ -528,44 +543,50 @@ const REVIEW_EVENT_CLI_FLAG = {
 	REQUEST_CHANGES: "--request-changes",
 } as const satisfies Record<SubmitPullRequestReviewInput["event"], string>
 
-export class GitHubService extends Context.Service<GitHubService, {
-	readonly listOpenPullRequests: (mode: PullRequestQueueMode, repository: string | null) => Effect.Effect<readonly PullRequestItem[], GitHubError>
-	readonly listOpenPullRequestPage: (input: ListPullRequestPageInput) => Effect.Effect<PullRequestPage, GitHubError>
-	readonly listOpenPullRequestDetails: (mode: PullRequestQueueMode, repository: string | null) => Effect.Effect<readonly PullRequestItem[], GitHubError>
-	readonly getPullRequestDetails: (repository: string, number: number) => Effect.Effect<PullRequestItem, GitHubError>
-	readonly getAuthenticatedUser: () => Effect.Effect<string, GitHubError>
-	readonly getPullRequestDiff: (repository: string, number: number) => Effect.Effect<string, GitHubError>
-	readonly listPullRequestComments: (repository: string, number: number) => Effect.Effect<readonly PullRequestReviewComment[], GitHubError>
-	readonly listPullRequestConversation: (repository: string, number: number) => Effect.Effect<readonly PullRequestConversationItem[], GitHubError>
-	readonly getPullRequestMergeInfo: (repository: string, number: number) => Effect.Effect<PullRequestMergeInfo, GitHubError>
-	readonly mergePullRequest: (repository: string, number: number, action: PullRequestMergeAction) => Effect.Effect<void, CommandError>
-	readonly closePullRequest: (repository: string, number: number) => Effect.Effect<void, CommandError>
-	readonly createPullRequestComment: (input: CreatePullRequestCommentInput) => Effect.Effect<PullRequestReviewComment, GitHubError>
-	readonly submitPullRequestReview: (input: SubmitPullRequestReviewInput) => Effect.Effect<void, CommandError>
-	readonly toggleDraftStatus: (repository: string, number: number, isDraft: boolean) => Effect.Effect<void, CommandError>
-	readonly listRepoLabels: (repository: string) => Effect.Effect<readonly { readonly name: string; readonly color: string | null }[], GitHubError>
-	readonly addPullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, CommandError>
-	readonly removePullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, CommandError>
-}>()("ghui/GitHubService") {
+export class GitHubService extends Context.Service<
+	GitHubService,
+	{
+		readonly listOpenPullRequests: (mode: PullRequestQueueMode, repository: string | null) => Effect.Effect<readonly PullRequestItem[], GitHubError>
+		readonly listOpenPullRequestPage: (input: ListPullRequestPageInput) => Effect.Effect<PullRequestPage, GitHubError>
+		readonly listOpenPullRequestDetails: (mode: PullRequestQueueMode, repository: string | null) => Effect.Effect<readonly PullRequestItem[], GitHubError>
+		readonly getPullRequestDetails: (repository: string, number: number) => Effect.Effect<PullRequestItem, GitHubError>
+		readonly getAuthenticatedUser: () => Effect.Effect<string, GitHubError>
+		readonly getPullRequestDiff: (repository: string, number: number) => Effect.Effect<string, GitHubError>
+		readonly listPullRequestComments: (repository: string, number: number) => Effect.Effect<readonly PullRequestReviewComment[], GitHubError>
+		readonly listPullRequestConversation: (repository: string, number: number) => Effect.Effect<readonly PullRequestConversationItem[], GitHubError>
+		readonly getPullRequestMergeInfo: (repository: string, number: number) => Effect.Effect<PullRequestMergeInfo, GitHubError>
+		readonly mergePullRequest: (repository: string, number: number, action: PullRequestMergeAction) => Effect.Effect<void, CommandError>
+		readonly closePullRequest: (repository: string, number: number) => Effect.Effect<void, CommandError>
+		readonly createPullRequestComment: (input: CreatePullRequestCommentInput) => Effect.Effect<PullRequestReviewComment, GitHubError>
+		readonly submitPullRequestReview: (input: SubmitPullRequestReviewInput) => Effect.Effect<void, CommandError>
+		readonly toggleDraftStatus: (repository: string, number: number, isDraft: boolean) => Effect.Effect<void, CommandError>
+		readonly listRepoLabels: (repository: string) => Effect.Effect<readonly { readonly name: string; readonly color: string | null }[], GitHubError>
+		readonly addPullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, CommandError>
+		readonly removePullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, CommandError>
+	}
+>()("ghui/GitHubService") {
 	static readonly layerNoDeps = Layer.effect(
 		GitHubService,
-		Effect.gen(function*() {
+		Effect.gen(function* () {
 			const command = yield* CommandRunner
 
 			const ghJson = <S extends Schema.Top>(label: string, schema: S, args: readonly string[]) =>
 				command.runSchema(schema, "gh", args).pipe(Effect.withSpan(`GitHubService.${label}`))
 
-			const ghVoid = (label: string, args: readonly string[]) =>
-				command.run("gh", args).pipe(Effect.withSpan(`GitHubService.${label}`), Effect.asVoid)
+			const ghVoid = (label: string, args: readonly string[]) => command.run("gh", args).pipe(Effect.withSpan(`GitHubService.${label}`), Effect.asVoid)
 
 			const searchPage = <Item extends Schema.Top>(label: string, query: string, schema: Item, parse: (node: Item["Type"]) => PullRequestItem) => {
 				const responseSchema = SearchResponseSchema(schema)
-				return Effect.fn(`GitHubService.${label}`)(function*(input: ListPullRequestPageInput) {
+				return Effect.fn(`GitHubService.${label}`)(function* (input: ListPullRequestPageInput) {
 					const response: SearchResponse<Item["Type"]> = yield* command.runSchema(responseSchema, "gh", [
-						"api", "graphql",
-						"-f", `query=${query}`,
-						"-F", `searchQuery=${searchQuery(input.mode, input.repository)}`,
-						"-F", `first=${input.pageSize}`,
+						"api",
+						"graphql",
+						"-f",
+						`query=${query}`,
+						"-F",
+						`searchQuery=${searchQuery(input.mode, input.repository)}`,
+						"-F",
+						`first=${input.pageSize}`,
 						...(input.cursor ? ["-F", `after=${input.cursor}`] : []),
 					])
 					return pullRequestPage(response.data.search, parse)
@@ -575,7 +596,7 @@ export class GitHubService extends Context.Service<GitHubService, {
 			const listOpenPullRequestSearchPage = searchPage("listOpenPullRequestSearchPage", pullRequestSummarySearchQuery, RawPullRequestSummaryNodeSchema, parsePullRequestSummary)
 			const listOpenPullRequestDetailsPage = searchPage("listOpenPullRequestDetailsPage", pullRequestSearchQuery, RawPullRequestNodeSchema, parsePullRequest)
 
-			const listRepositoryPullRequestPage = Effect.fn("GitHubService.listRepositoryPullRequestPage")(function*(input: ListPullRequestPageInput) {
+			const listRepositoryPullRequestPage = Effect.fn("GitHubService.listRepositoryPullRequestPage")(function* (input: ListPullRequestPageInput) {
 				if (!input.repository) return { items: [], endCursor: null, hasNextPage: false } satisfies PullRequestPage
 				const repo = repositoryParts(input.repository)
 				if (!repo) {
@@ -583,11 +604,16 @@ export class GitHubService extends Context.Service<GitHubService, {
 				}
 
 				const response = yield* command.runSchema(RepositoryPullRequestsResponseSchema, "gh", [
-					"api", "graphql",
-					"-f", `query=${repositoryPullRequestsQuery}`,
-					"-F", `owner=${repo.owner}`,
-					"-F", `name=${repo.name}`,
-					"-F", `first=${input.pageSize}`,
+					"api",
+					"graphql",
+					"-f",
+					`query=${repositoryPullRequestsQuery}`,
+					"-F",
+					`owner=${repo.owner}`,
+					"-F",
+					`name=${repo.name}`,
+					"-F",
+					`first=${input.pageSize}`,
 					...(input.cursor ? ["-F", `after=${input.cursor}`] : []),
 				])
 				const connection = response.data.repository?.pullRequests
@@ -597,14 +623,18 @@ export class GitHubService extends Context.Service<GitHubService, {
 				return pullRequestPage(connection, parsePullRequestSummary)
 			})
 
-			const listOpenPullRequestPage = Effect.fn("GitHubService.listOpenPullRequestPage")(function*(input: ListPullRequestPageInput) {
+			const listOpenPullRequestPage = Effect.fn("GitHubService.listOpenPullRequestPage")(function* (input: ListPullRequestPageInput) {
 				const pageSize = Math.max(1, Math.min(100, input.pageSize))
 				const pageInput = { ...input, pageSize }
 				if (pageInput.mode === "repository" && pageInput.repository) return yield* listRepositoryPullRequestPage(pageInput)
 				return yield* listOpenPullRequestSearchPage(pageInput)
 			})
 
-			const paginatePages = Effect.fn("GitHubService.paginatePages")(function*(mode: PullRequestQueueMode, repository: string | null, loadPage: (input: ListPullRequestPageInput) => Effect.Effect<PullRequestPage, GitHubError>) {
+			const paginatePages = Effect.fn("GitHubService.paginatePages")(function* (
+				mode: PullRequestQueueMode,
+				repository: string | null,
+				loadPage: (input: ListPullRequestPageInput) => Effect.Effect<PullRequestPage, GitHubError>,
+			) {
 				const pullRequests: PullRequestItem[] = []
 				let cursor: string | null = null
 
@@ -618,25 +648,30 @@ export class GitHubService extends Context.Service<GitHubService, {
 				return pullRequests
 			})
 
-			const listOpenPullRequests = Effect.fn("GitHubService.listOpenPullRequests")(function*(mode: PullRequestQueueMode, repository: string | null) {
+			const listOpenPullRequests = Effect.fn("GitHubService.listOpenPullRequests")(function* (mode: PullRequestQueueMode, repository: string | null) {
 				return yield* paginatePages(mode, repository, listOpenPullRequestPage)
 			})
-			const listOpenPullRequestDetails = Effect.fn("GitHubService.listOpenPullRequestDetails")(function*(mode: PullRequestQueueMode, repository: string | null) {
+			const listOpenPullRequestDetails = Effect.fn("GitHubService.listOpenPullRequestDetails")(function* (mode: PullRequestQueueMode, repository: string | null) {
 				return yield* paginatePages(mode, repository, listOpenPullRequestDetailsPage)
 			})
 
-			const getPullRequestDetails = Effect.fn("GitHubService.getPullRequestDetails")(function*(repository: string, number: number) {
+			const getPullRequestDetails = Effect.fn("GitHubService.getPullRequestDetails")(function* (repository: string, number: number) {
 				const repo = repositoryParts(repository)
 				if (!repo) {
 					return yield* new CommandError({ command: "gh", args: [], detail: `Invalid repository: ${repository}`, cause: repository })
 				}
 
 				const response = yield* command.runSchema(PullRequestDetailResponseSchema, "gh", [
-					"api", "graphql",
-					"-f", `query=${pullRequestDetailQuery}`,
-					"-F", `owner=${repo.owner}`,
-					"-F", `name=${repo.name}`,
-					"-F", `number=${number}`,
+					"api",
+					"graphql",
+					"-f",
+					`query=${pullRequestDetailQuery}`,
+					"-F",
+					`owner=${repo.owner}`,
+					"-F",
+					`name=${repo.name}`,
+					"-F",
+					`number=${number}`,
 				])
 				const pullRequest = response.data.repository?.pullRequest
 				if (!pullRequest) {
@@ -645,34 +680,41 @@ export class GitHubService extends Context.Service<GitHubService, {
 				return parsePullRequest(pullRequest)
 			})
 
-			const getAuthenticatedUser = () =>
-				ghJson("getAuthenticatedUser", ViewerSchema, ["api", "user"]).pipe(Effect.map((viewer) => viewer.login))
+			const getAuthenticatedUser = () => ghJson("getAuthenticatedUser", ViewerSchema, ["api", "user"]).pipe(Effect.map((viewer) => viewer.login))
 
 			const getPullRequestDiff = (repository: string, number: number) =>
-				ghJson("getPullRequestDiff", PullRequestFilesResponseSchema, [
-					"api", "--paginate", "--slurp", `repos/${repository}/pulls/${number}/files`,
-				]).pipe(Effect.map((response) => pullRequestFilesToPatch(parsePullRequestFiles(response))))
+				ghJson("getPullRequestDiff", PullRequestFilesResponseSchema, ["api", "--paginate", "--slurp", `repos/${repository}/pulls/${number}/files`]).pipe(
+					Effect.map((response) => pullRequestFilesToPatch(parsePullRequestFiles(response))),
+				)
 
 			const listPullRequestComments = (repository: string, number: number) =>
-				ghJson("listPullRequestComments", CommentsResponseSchema, [
-					"api", "--paginate", "--slurp", `repos/${repository}/pulls/${number}/comments`,
-				]).pipe(Effect.map(parsePullRequestComments))
+				ghJson("listPullRequestComments", CommentsResponseSchema, ["api", "--paginate", "--slurp", `repos/${repository}/pulls/${number}/comments`]).pipe(
+					Effect.map(parsePullRequestComments),
+				)
 
-			const listPullRequestConversation = Effect.fn("GitHubService.listPullRequestConversation")(function*(repository: string, number: number) {
-				const [issueComments, reviewComments] = yield* Effect.all([
-					ghJson("listPullRequestIssueComments", CommentsResponseSchema, [
-						"api", "--paginate", "--slurp", `repos/${repository}/issues/${number}/comments`,
-					]).pipe(Effect.map(parseIssueComments)),
-					listPullRequestComments(repository, number).pipe(Effect.map((comments) => comments.map(reviewCommentConversationItem))),
-				], { concurrency: "unbounded" })
+			const listPullRequestConversation = Effect.fn("GitHubService.listPullRequestConversation")(function* (repository: string, number: number) {
+				const [issueComments, reviewComments] = yield* Effect.all(
+					[
+						ghJson("listPullRequestIssueComments", CommentsResponseSchema, ["api", "--paginate", "--slurp", `repos/${repository}/issues/${number}/comments`]).pipe(
+							Effect.map(parseIssueComments),
+						),
+						listPullRequestComments(repository, number).pipe(Effect.map((comments) => comments.map(reviewCommentConversationItem))),
+					],
+					{ concurrency: "unbounded" },
+				)
 
 				return sortConversationItems([...issueComments, ...reviewComments])
 			})
 
-			const getPullRequestMergeInfo = Effect.fn("GitHubService.getPullRequestMergeInfo")(function*(repository: string, number: number) {
+			const getPullRequestMergeInfo = Effect.fn("GitHubService.getPullRequestMergeInfo")(function* (repository: string, number: number) {
 				const info = yield* command.runSchema(MergeInfoResponseSchema, "gh", [
-					"pr", "view", String(number), "--repo", repository,
-					"--json", "number,title,state,isDraft,mergeable,reviewDecision,autoMergeRequest,statusCheckRollup",
+					"pr",
+					"view",
+					String(number),
+					"--repo",
+					repository,
+					"--json",
+					"number,title,state,isDraft,mergeable,reviewDecision,autoMergeRequest,statusCheckRollup",
 				])
 				const checkInfo = getCheckInfoFromContexts(info.statusCheckRollup)
 
@@ -693,36 +735,39 @@ export class GitHubService extends Context.Service<GitHubService, {
 			const mergePullRequest = (repository: string, number: number, action: PullRequestMergeAction) =>
 				ghVoid("mergePullRequest", ["pr", "merge", String(number), "--repo", repository, ...getMergeActionDefinition(action).cliArgs])
 
-			const closePullRequest = (repository: string, number: number) =>
-				ghVoid("closePullRequest", ["pr", "close", String(number), "--repo", repository])
+			const closePullRequest = (repository: string, number: number) => ghVoid("closePullRequest", ["pr", "close", String(number), "--repo", repository])
 
-			const createPullRequestComment = Effect.fn("GitHubService.createPullRequestComment")(function*(input: CreatePullRequestCommentInput) {
+			const createPullRequestComment = Effect.fn("GitHubService.createPullRequestComment")(function* (input: CreatePullRequestCommentInput) {
 				const response = yield* command.runSchema(PullRequestCommentSchema, "gh", [
-					"api", "--method", "POST", `repos/${input.repository}/pulls/${input.number}/comments`,
-					"-f", `body=${input.body}`,
-					"-f", `commit_id=${input.commitId}`,
-					"-f", `path=${input.path}`,
-					"-F", `line=${input.line}`,
-					"-f", `side=${input.side}`,
+					"api",
+					"--method",
+					"POST",
+					`repos/${input.repository}/pulls/${input.number}/comments`,
+					"-f",
+					`body=${input.body}`,
+					"-f",
+					`commit_id=${input.commitId}`,
+					"-f",
+					`path=${input.path}`,
+					"-F",
+					`line=${input.line}`,
+					"-f",
+					`side=${input.side}`,
 					...(input.startLine === undefined ? [] : ["-F", `start_line=${input.startLine}`, "-f", `start_side=${input.startSide ?? input.side}`]),
 				])
 				return parsePullRequestComment(response) ?? fallbackCreatedComment(input)
 			})
 
 			const submitPullRequestReview = (input: SubmitPullRequestReviewInput) =>
-				ghVoid("submitPullRequestReview", [
-					"pr", "review", String(input.number), "--repo", input.repository,
-					REVIEW_EVENT_CLI_FLAG[input.event],
-					"--body", input.body,
-				])
+				ghVoid("submitPullRequestReview", ["pr", "review", String(input.number), "--repo", input.repository, REVIEW_EVENT_CLI_FLAG[input.event], "--body", input.body])
 
 			const toggleDraftStatus = (repository: string, number: number, isDraft: boolean) =>
 				ghVoid("toggleDraftStatus", ["pr", "ready", String(number), "--repo", repository, ...(isDraft ? [] : ["--undo"])])
 
 			const listRepoLabels = (repository: string) =>
-				ghJson("listRepoLabels", RepoLabelsResponseSchema, [
-					"label", "list", "--repo", repository, "--json", "name,color", "--limit", "100",
-				]).pipe(Effect.map((labels) => labels.map((label) => ({ name: label.name, color: `#${label.color}` }))))
+				ghJson("listRepoLabels", RepoLabelsResponseSchema, ["label", "list", "--repo", repository, "--json", "name,color", "--limit", "100"]).pipe(
+					Effect.map((labels) => labels.map((label) => ({ name: label.name, color: `#${label.color}` }))),
+				)
 
 			const addPullRequestLabel = (repository: string, number: number, label: string) =>
 				ghVoid("addPullRequestLabel", ["pr", "edit", String(number), "--repo", repository, "--add-label", label])

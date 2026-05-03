@@ -36,7 +36,10 @@ export const buildCommandPaletteRows = (commands: readonly AppCommand[]): readon
 }
 
 export const commandPaletteSelectedRowIndex = (rows: readonly CommandPaletteRow[], selectedCommandIndex: number) =>
-	Math.max(0, rows.findIndex((row) => row._tag === "command" && row.commandIndex === selectedCommandIndex))
+	Math.max(
+		0,
+		rows.findIndex((row) => row._tag === "command" && row.commandIndex === selectedCommandIndex),
+	)
 
 export const commandPaletteScrollTop = ({
 	current,
@@ -55,8 +58,7 @@ export const commandPaletteScrollTop = ({
 	return clampScrollTop(scrollTopForVisibleLine(current, listHeight, selectedRowIndex, 0))
 }
 
-export const commandPaletteClampScrollTop = (rowsLength: number, listHeight: number, value: number) =>
-	Math.max(0, Math.min(value, Math.max(0, rowsLength - listHeight)))
+export const commandPaletteClampScrollTop = (rowsLength: number, listHeight: number, value: number) => Math.max(0, Math.min(value, Math.max(0, rowsLength - listHeight)))
 
 export const CommandPalette = ({
 	commands,
@@ -107,53 +109,60 @@ export const CommandPalette = ({
 		event.preventDefault()
 		event.stopPropagation()
 	}
-	const content = rows.length === 0 ? (
-		<>
-			<Filler rows={emptyTopRows} prefix="top" />
-			<PlainLine text={centerCell("No matching command", rowWidth)} fg={colors.muted} />
-			<Filler rows={emptyBottomRows} prefix="bottom" />
-		</>
-	) : (
-		<>
-			{visibleRows.map((row, index) => {
-				const rowIndex = scrollTop + index
-				if (row._tag === "spacer") {
-					return <PlainLine key={`spacer-${rowIndex}`} text="" />
-				}
-				if (row._tag === "section") {
-					return <PlainLine key={`section-${row.scope}-${rowIndex}`} text={fitCell(`  ${scopeLabels[row.scope].toUpperCase()}`, rowWidth)} fg={colors.muted} />
-				}
+	const content =
+		rows.length === 0 ? (
+			<>
+				<Filler rows={emptyTopRows} prefix="top" />
+				<PlainLine text={centerCell("No matching command", rowWidth)} fg={colors.muted} />
+				<Filler rows={emptyBottomRows} prefix="bottom" />
+			</>
+		) : (
+			<>
+				{visibleRows.map((row, index) => {
+					const rowIndex = scrollTop + index
+					if (row._tag === "spacer") {
+						return <PlainLine key={`spacer-${rowIndex}`} text="" />
+					}
+					if (row._tag === "section") {
+						return <PlainLine key={`section-${row.scope}-${rowIndex}`} text={fitCell(`  ${scopeLabels[row.scope].toUpperCase()}`, rowWidth)} fg={colors.muted} />
+					}
 
-				const { command, commandIndex } = row
-				const isSelected = commandIndex === clampedIndex
-				const shortcut = command.shortcut ? trimCell(command.shortcut, 16) : ""
-				const shortcutWidth = shortcut.length === 0 ? 0 : Math.min(18, Math.max(6, shortcut.length + 1))
-				const trailingPadding = shortcut.length === 0 ? 0 : 1
-				// Layout: "▸ " (2) + title + "  " (2) + subtitle + filler + shortcut + " " (1)
-				const SELECTOR_WIDTH = 2
-				const titleAvailable = Math.max(8, rowWidth - SELECTOR_WIDTH - shortcutWidth - trailingPadding)
-				const titleText = trimCell(command.title, Math.min(titleAvailable, 36))
-				const subtitleSpace = Math.max(0, titleAvailable - titleText.length - 2)
-				const subtitleText = command.subtitle && subtitleSpace > 4 ? trimCell(command.subtitle, subtitleSpace) : ""
-				const fillerWidth = Math.max(0, titleAvailable - titleText.length - (subtitleText ? 2 + subtitleText.length : 0))
+					const { command, commandIndex } = row
+					const isSelected = commandIndex === clampedIndex
+					const shortcut = command.shortcut ? trimCell(command.shortcut, 16) : ""
+					const shortcutWidth = shortcut.length === 0 ? 0 : Math.min(18, Math.max(6, shortcut.length + 1))
+					const trailingPadding = shortcut.length === 0 ? 0 : 1
+					// Layout: "▸ " (2) + title + "  " (2) + subtitle + filler + shortcut + " " (1)
+					const SELECTOR_WIDTH = 2
+					const titleAvailable = Math.max(8, rowWidth - SELECTOR_WIDTH - shortcutWidth - trailingPadding)
+					const titleText = trimCell(command.title, Math.min(titleAvailable, 36))
+					const subtitleSpace = Math.max(0, titleAvailable - titleText.length - 2)
+					const subtitleText = command.subtitle && subtitleSpace > 4 ? trimCell(command.subtitle, subtitleSpace) : ""
+					const fillerWidth = Math.max(0, titleAvailable - titleText.length - (subtitleText ? 2 + subtitleText.length : 0))
 
-				return (
-					<box key={command.id} height={1} onMouseDown={runCommandOnMouseDown(command)} onMouseMove={selectCommandOnMouse(commandIndex)} onMouseOver={selectCommandOnMouse(commandIndex)}>
-						<TextLine width={rowWidth} bg={isSelected ? colors.selectedBg : undefined} fg={isSelected ? colors.selectedText : colors.text}>
-							<span fg={isSelected ? colors.accent : colors.muted}>{isSelected ? "▸" : " "}</span>
-							<span> </span>
-							{isSelected ? <span attributes={TextAttributes.BOLD}>{titleText}</span> : <span>{titleText}</span>}
-							{subtitleText ? <span fg={colors.muted}>{`  ${subtitleText}`}</span> : null}
-							{fillerWidth > 0 ? <span>{" ".repeat(fillerWidth)}</span> : null}
-							{shortcutWidth > 0 ? <span fg={colors.muted}>{fitCell(shortcut, shortcutWidth, "right")}</span> : null}
-							{trailingPadding > 0 ? <span> </span> : null}
-						</TextLine>
-					</box>
-				)
-			})}
-			<Filler rows={bottomPaddingRows} prefix="pad" />
-		</>
-	)
+					return (
+						<box
+							key={command.id}
+							height={1}
+							onMouseDown={runCommandOnMouseDown(command)}
+							onMouseMove={selectCommandOnMouse(commandIndex)}
+							onMouseOver={selectCommandOnMouse(commandIndex)}
+						>
+							<TextLine width={rowWidth} bg={isSelected ? colors.selectedBg : undefined} fg={isSelected ? colors.selectedText : colors.text}>
+								<span fg={isSelected ? colors.accent : colors.muted}>{isSelected ? "▸" : " "}</span>
+								<span> </span>
+								{isSelected ? <span attributes={TextAttributes.BOLD}>{titleText}</span> : <span>{titleText}</span>}
+								{subtitleText ? <span fg={colors.muted}>{`  ${subtitleText}`}</span> : null}
+								{fillerWidth > 0 ? <span>{" ".repeat(fillerWidth)}</span> : null}
+								{shortcutWidth > 0 ? <span fg={colors.muted}>{fitCell(shortcut, shortcutWidth, "right")}</span> : null}
+								{trailingPadding > 0 ? <span> </span> : null}
+							</TextLine>
+						</box>
+					)
+				})}
+				<Filler rows={bottomPaddingRows} prefix="pad" />
+			</>
+		)
 	useEffect(() => {
 		setScrollTop((current) => commandPaletteScrollTop({ current, rowsLength: rows.length, listHeight, selectedRowIndex }))
 	}, [listHeight, rows.length, selectedRowIndex])
@@ -168,7 +177,15 @@ export const CommandPalette = ({
 			placeholder="Search"
 			countText={countText}
 			onBodyMouseScroll={handleMouseScroll}
-			footer={<HintRow items={[{ key: "↑↓", label: "select" }, { key: "enter", label: "run" }, { key: "esc", label: "close" }]} />}
+			footer={
+				<HintRow
+					items={[
+						{ key: "↑↓", label: "select" },
+						{ key: "enter", label: "run" },
+						{ key: "esc", label: "close" },
+					]}
+				/>
+			}
 		>
 			{content}
 		</SearchModalFrame>

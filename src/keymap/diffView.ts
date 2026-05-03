@@ -6,7 +6,7 @@ export type DiffAlign = "center" | "top" | "bottom"
 
 export interface DiffViewCtx {
 	readonly halfPage: number
-	readonly handleEscape: () => void          // closes diff, or clears comment range if active
+	readonly handleEscape: () => void // closes diff, or clears comment range if active
 	readonly openSelectedComment: () => void
 	readonly toggleRange: () => void
 	readonly toggleView: () => void
@@ -80,7 +80,7 @@ export const diffViewKeymap = Diff(
 	{ id: "diff.changed-files", title: "Changed files", keys: ["f"], run: (s) => s.openChangedFiles() },
 	{ id: "diff.next-file", title: "Next file", keys: ["]"], run: (s) => s.nextFile() },
 	{ id: "diff.previous-file", title: "Previous file", keys: ["["], run: (s) => s.previousFile() },
-	{ id: "diff.submit-review", title: "Submit review", keys: ["shift+r"], run: (s) => s.openSubmitReview() },
+	{ id: "diff.submit-review", title: "Review pull request", keys: ["shift+r"], run: (s) => s.openSubmitReview() },
 
 	// Boundary jumps + align
 	{ id: "diff.first", title: "First comment", keys: ["g g"], run: (s) => s.moveAnchorToBoundary("first") },

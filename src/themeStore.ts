@@ -26,7 +26,7 @@ const parseConfig = (text: string): StoredConfig => {
 
 const readStoredConfig = async () => {
 	const file = Bun.file(configPath())
-	return await file.exists() ? parseConfig(await file.text()) : {}
+	return (await file.exists()) ? parseConfig(await file.text()) : {}
 }
 
 const writeStoredConfig = async (config: StoredConfig) => {
@@ -35,26 +35,34 @@ const writeStoredConfig = async (config: StoredConfig) => {
 	await Bun.write(path, `${JSON.stringify(config, null, "\t")}\n`)
 }
 
-export const loadStoredThemeId: Effect.Effect<ThemeId> = Effect.catchCause(Effect.tryPromise(async () => {
-	const config = await readStoredConfig()
-	return isThemeId(config.theme) ? config.theme : "ghui"
-}), () => Effect.succeed("ghui" satisfies ThemeId))
+export const loadStoredThemeId: Effect.Effect<ThemeId> = Effect.catchCause(
+	Effect.tryPromise(async () => {
+		const config = await readStoredConfig()
+		return isThemeId(config.theme) ? config.theme : "ghui"
+	}),
+	() => Effect.succeed("ghui" satisfies ThemeId),
+)
 
-export const loadStoredDiffWhitespaceMode: Effect.Effect<DiffWhitespaceMode> = Effect.catchCause(Effect.tryPromise(async () => {
-	const config = await readStoredConfig()
-	return Schema.is(DiffWhitespaceMode)(config.diffWhitespaceMode) ? config.diffWhitespaceMode : "ignore"
-}), () => Effect.succeed("ignore" satisfies DiffWhitespaceMode))
+export const loadStoredDiffWhitespaceMode: Effect.Effect<DiffWhitespaceMode> = Effect.catchCause(
+	Effect.tryPromise(async () => {
+		const config = await readStoredConfig()
+		return Schema.is(DiffWhitespaceMode)(config.diffWhitespaceMode) ? config.diffWhitespaceMode : "ignore"
+	}),
+	() => Effect.succeed("ignore" satisfies DiffWhitespaceMode),
+)
 
-export const saveStoredThemeId = (theme: ThemeId): Effect.Effect<void> => Effect.tryPromise(async () => {
-	const config = await readStoredConfig()
-	if (config.theme === theme) return
+export const saveStoredThemeId = (theme: ThemeId): Effect.Effect<void> =>
+	Effect.tryPromise(async () => {
+		const config = await readStoredConfig()
+		if (config.theme === theme) return
 
-	await writeStoredConfig({ ...config, theme })
-})
+		await writeStoredConfig({ ...config, theme })
+	})
 
-export const saveStoredDiffWhitespaceMode = (diffWhitespaceMode: DiffWhitespaceMode): Effect.Effect<void> => Effect.tryPromise(async () => {
-	const config = await readStoredConfig()
-	if (config.diffWhitespaceMode === diffWhitespaceMode) return
+export const saveStoredDiffWhitespaceMode = (diffWhitespaceMode: DiffWhitespaceMode): Effect.Effect<void> =>
+	Effect.tryPromise(async () => {
+		const config = await readStoredConfig()
+		if (config.diffWhitespaceMode === diffWhitespaceMode) return
 
-	await writeStoredConfig({ ...config, diffWhitespaceMode })
-})
+		await writeStoredConfig({ ...config, diffWhitespaceMode })
+	})

@@ -1,5 +1,17 @@
 import { Effect, Layer } from "effect"
-import type { CheckItem, CreatePullRequestCommentInput, Mergeable, PullRequestConversationItem, PullRequestItem, PullRequestLabel, PullRequestMergeInfo, PullRequestPage, PullRequestQueueMode, PullRequestReviewComment, ReviewStatus } from "../domain.js"
+import type {
+	CheckItem,
+	CreatePullRequestCommentInput,
+	Mergeable,
+	PullRequestConversationItem,
+	PullRequestItem,
+	PullRequestLabel,
+	PullRequestMergeInfo,
+	PullRequestPage,
+	PullRequestQueueMode,
+	PullRequestReviewComment,
+	ReviewStatus,
+} from "../domain.js"
 import { GitHubService } from "./GitHubService.js"
 
 export interface MockOptions {
@@ -25,7 +37,11 @@ const synthCheckSummary = (passed: number, total: number): Pick<PullRequestItem,
 
 const synthLabels = (index: number): readonly PullRequestLabel[] => {
 	if (index % 5 === 0) return [{ name: "bug", color: "#d73a4a" }]
-	if (index % 7 === 0) return [{ name: "enhancement", color: "#a2eeef" }, { name: "tests", color: "#0e8a16" }]
+	if (index % 7 === 0)
+		return [
+			{ name: "enhancement", color: "#a2eeef" },
+			{ name: "tests", color: "#0e8a16" },
+		]
 	return []
 }
 
@@ -104,15 +120,18 @@ export const MockGitHubService = {
 	layer: (options: MockOptions) => {
 		const items = buildMockPullRequests(options)
 		const username = options.username ?? "mock-user"
-		const summaryItems = items.map((item) => ({
-			...item,
-			body: "",
-			labels: [],
-			additions: 0,
-			deletions: 0,
-			changedFiles: 0,
-			detailLoaded: false,
-		} satisfies PullRequestItem))
+		const summaryItems = items.map(
+			(item) =>
+				({
+					...item,
+					body: "",
+					labels: [],
+					additions: 0,
+					deletions: 0,
+					changedFiles: 0,
+					detailLoaded: false,
+				}) satisfies PullRequestItem,
+		)
 		const findPullRequest = (repository: string, number: number) => items.find((item) => item.repository === repository && item.number === number) ?? items[0]!
 		const conversationItems = (repository: string, number: number): readonly PullRequestConversationItem[] => [
 			{
@@ -147,30 +166,32 @@ export const MockGitHubService = {
 				getPullRequestDiff: (_repo, _number) => Effect.succeed(mockDiff),
 				listPullRequestComments: (_repo, _number) => Effect.succeed([] as readonly PullRequestReviewComment[]),
 				listPullRequestConversation: (repository, number) => Effect.succeed(conversationItems(repository, number)),
-				getPullRequestMergeInfo: (repository, number) => Effect.succeed({
-					repository,
-					number,
-					title: `Mock PR ${number}`,
-					state: "open",
-					isDraft: false,
-					mergeable: MERGEABLE_CYCLE[number % MERGEABLE_CYCLE.length]!,
-					reviewStatus: "approved",
-					checkStatus: "passing",
-					checkSummary: "10/10",
-					autoMergeEnabled: false,
-				} satisfies PullRequestMergeInfo),
+				getPullRequestMergeInfo: (repository, number) =>
+					Effect.succeed({
+						repository,
+						number,
+						title: `Mock PR ${number}`,
+						state: "open",
+						isDraft: false,
+						mergeable: MERGEABLE_CYCLE[number % MERGEABLE_CYCLE.length]!,
+						reviewStatus: "approved",
+						checkStatus: "passing",
+						checkSummary: "10/10",
+						autoMergeEnabled: false,
+					} satisfies PullRequestMergeInfo),
 				mergePullRequest: () => Effect.void,
 				closePullRequest: () => Effect.void,
-				createPullRequestComment: (input: CreatePullRequestCommentInput) => Effect.succeed({
-					id: `mock:${Date.now()}`,
-					path: input.path,
-					line: input.line,
-					side: input.side,
-					author: username,
-					body: input.body,
-					createdAt: new Date(),
-					url: null,
-				} satisfies PullRequestReviewComment),
+				createPullRequestComment: (input: CreatePullRequestCommentInput) =>
+					Effect.succeed({
+						id: `mock:${Date.now()}`,
+						path: input.path,
+						line: input.line,
+						side: input.side,
+						author: username,
+						body: input.body,
+						createdAt: new Date(),
+						url: null,
+					} satisfies PullRequestReviewComment),
 				submitPullRequestReview: () => Effect.void,
 				toggleDraftStatus: () => Effect.void,
 				listRepoLabels: () => Effect.succeed([]),

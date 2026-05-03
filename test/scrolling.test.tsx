@@ -39,11 +39,7 @@ const stepFrame = async (renderOnce: () => Promise<void>) => {
 	})
 }
 
-const settle = async (
-	renderOnce: () => Promise<void>,
-	predicate: () => boolean,
-	attempts = 60,
-) => {
+const settle = async (renderOnce: () => Promise<void>, predicate: () => boolean, attempts = 60) => {
 	for (let i = 0; i < attempts; i++) {
 		await stepFrame(renderOnce)
 		if (predicate()) return true

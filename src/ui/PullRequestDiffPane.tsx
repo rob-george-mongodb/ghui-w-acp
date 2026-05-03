@@ -3,7 +3,22 @@ import { useMemo, type Ref } from "react"
 import type { DiffCommentSide, PullRequestItem, PullRequestReviewComment } from "../domain.js"
 import { colors, lineNumberTextColor, type ThemeId } from "./colors.js"
 import { CommentBodyLine, commentCountText, commentMetaSegments, CommentSegmentsLine } from "./comments.js"
-import { createDiffSyntaxStyle, diffCommentAnchorLabel, diffCommentLineLabel, diffFileStats, diffFileStatsText, diffStatText, stackedDiffFileIndexAtLine, type DiffFileStats, type DiffView, type DiffWhitespaceMode, type DiffWrapMode, type PullRequestDiffState, type StackedDiffCommentAnchor, type StackedDiffFilePatch } from "./diff.js"
+import {
+	createDiffSyntaxStyle,
+	diffCommentAnchorLabel,
+	diffCommentLineLabel,
+	diffFileStats,
+	diffFileStatsText,
+	diffStatText,
+	stackedDiffFileIndexAtLine,
+	type DiffFileStats,
+	type DiffView,
+	type DiffWhitespaceMode,
+	type DiffWrapMode,
+	type PullRequestDiffState,
+	type StackedDiffCommentAnchor,
+	type StackedDiffFilePatch,
+} from "./diff.js"
 import { LoadingPane, StatusCard } from "./DetailsPane.js"
 import { DiffStats } from "./diffStats.js"
 import { Divider, fitCell, PaddedRow, PlainLine, TextLine } from "./primitives.js"
@@ -59,7 +74,7 @@ const FileHeader = ({
 		<TextLine>
 			<span fg={colors.muted}>{counter} </span>
 			<span fg={colors.text}>{fitCell(file.name, nameWidth)}</span>
-			{statsText ? <span fg={colors.muted}>  </span> : null}
+			{statsText ? <span fg={colors.muted}> </span> : null}
 			<FileStats stats={stats} />
 			{suffix ? <span fg={suffixColor}>{suffix}</span> : null}
 		</TextLine>
@@ -133,23 +148,34 @@ export const PullRequestDiffPane = ({
 	}
 
 	if (readyFiles.length === 0 || stackedFiles.length === 0) {
-		return <LoadingPane content={{ title: whitespaceMode === "ignore" ? "No non-whitespace diff" : "No diff", hint: whitespaceMode === "ignore" ? "Use the command palette to show whitespace changes" : "This PR has no patch contents" }} width={paneWidth} height={height} />
+		return (
+			<LoadingPane
+				content={{
+					title: whitespaceMode === "ignore" ? "No non-whitespace diff" : "No diff",
+					hint: whitespaceMode === "ignore" ? "Use the command palette to show whitespace changes" : "This PR has no patch contents",
+				}}
+				width={paneWidth}
+				height={height}
+			/>
+		)
 	}
 
 	const hasSelectedCommentAnchor = selectedCommentAnchor !== null
-	const commentPeek = hasSelectedCommentAnchor && selectedCommentThread.length > 0
-		? selectedCommentThread[selectedCommentThread.length - 1]!
-		: null
-	const commentPeekMeta = commentPeek && selectedCommentAnchor
-		? commentMetaSegments({
-			item: commentPeek,
-			markerLabel: diffCommentLineLabel(selectedCommentAnchor),
-			groups: [
-				[{ text: commentCountText(selectedCommentThread.length), fg: colors.muted }],
-				[{ text: "enter", fg: colors.text }, { text: " thread", fg: colors.muted }],
-			],
-		})
-		: []
+	const commentPeek = hasSelectedCommentAnchor && selectedCommentThread.length > 0 ? selectedCommentThread[selectedCommentThread.length - 1]! : null
+	const commentPeekMeta =
+		commentPeek && selectedCommentAnchor
+			? commentMetaSegments({
+					item: commentPeek,
+					markerLabel: diffCommentLineLabel(selectedCommentAnchor),
+					groups: [
+						[{ text: commentCountText(selectedCommentThread.length), fg: colors.muted }],
+						[
+							{ text: "enter", fg: colors.text },
+							{ text: " thread", fg: colors.muted },
+						],
+					],
+				})
+			: []
 	const stickyScrollTop = Math.max(0, Math.floor(scrollTop))
 	const stickyArrayIndex = stackedDiffFileIndexAtLine(stackedFiles, stickyScrollTop)
 	const stickyFile = stickyArrayIndex >= 0 ? stackedFiles[stickyArrayIndex] : stackedFiles[0]
@@ -168,9 +194,7 @@ export const PullRequestDiffPane = ({
 		const localY = event.y - this.viewport.y
 		if (localY < 0 || localY >= this.viewport.height) return
 		const localX = event.x - this.viewport.x
-		const side = view === "split"
-			? localX < Math.floor(paneWidth / 2) ? "LEFT" : "RIGHT"
-			: null
+		const side = view === "split" ? (localX < Math.floor(paneWidth / 2) ? "LEFT" : "RIGHT") : null
 		onSelectCommentLine(Math.max(0, Math.floor(this.scrollTop + localY)), side)
 		event.preventDefault()
 		event.stopPropagation()
@@ -220,13 +244,27 @@ export const PullRequestDiffPane = ({
 						<>
 							<Divider width={paneWidth} />
 							<PaddedRow backgroundColor={colors.background}>
-								<FileHeader file={incomingFile.file} index={incomingFile.index} count={readyFiles.length} width={paneWidth} suffix={stickyCommentLabelFor(incomingFile)} suffixColor={stickyCommentColor} />
+								<FileHeader
+									file={incomingFile.file}
+									index={incomingFile.index}
+									count={readyFiles.length}
+									width={paneWidth}
+									suffix={stickyCommentLabelFor(incomingFile)}
+									suffixColor={stickyCommentColor}
+								/>
 							</PaddedRow>
 						</>
 					) : (
 						<>
 							<PaddedRow backgroundColor={colors.background}>
-								<FileHeader file={stickyFile.file} index={stickyFile.index} count={readyFiles.length} width={paneWidth} suffix={stickyCommentLabelFor(stickyFile)} suffixColor={stickyCommentColor} />
+								<FileHeader
+									file={stickyFile.file}
+									index={stickyFile.index}
+									count={readyFiles.length}
+									width={paneWidth}
+									suffix={stickyCommentLabelFor(stickyFile)}
+									suffixColor={stickyCommentColor}
+								/>
 							</PaddedRow>
 							<Divider width={paneWidth} />
 						</>

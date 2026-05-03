@@ -15,7 +15,7 @@ export const mergeModalKeymap = Merge(
 		id: "merge-modal.confirm",
 		title: "Merge pull request",
 		keys: ["return"],
-		enabled: (s) => s.availableActionCount > 0 ? true : "No merge actions available.",
+		enabled: (s) => (s.availableActionCount > 0 ? true : "No merge actions available."),
 		run: (s) => s.confirmMerge(),
 	},
 	{ id: "merge-modal.up", title: "Up", keys: ["k", "up"], run: (s) => s.moveSelection(-1) },

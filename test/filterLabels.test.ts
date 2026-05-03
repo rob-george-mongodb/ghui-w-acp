@@ -38,11 +38,27 @@ const files = [
 ]
 
 const packageFiles = [
-	{ name: "packages/effect-drizzle-sqlite/src/index.ts", filetype: "ts", patch: "diff --git a/packages/effect-drizzle-sqlite/src/index.ts b/packages/effect-drizzle-sqlite/src/index.ts" },
-	{ name: "packages/effect-drizzle-sqlite/package.json", filetype: "json", patch: "diff --git a/packages/effect-drizzle-sqlite/package.json b/packages/effect-drizzle-sqlite/package.json" },
-	{ name: "packages/opencode/src/project/instance.ts", filetype: "ts", patch: "diff --git a/packages/opencode/src/project/instance.ts b/packages/opencode/src/project/instance.ts" },
+	{
+		name: "packages/effect-drizzle-sqlite/src/index.ts",
+		filetype: "ts",
+		patch: "diff --git a/packages/effect-drizzle-sqlite/src/index.ts b/packages/effect-drizzle-sqlite/src/index.ts",
+	},
+	{
+		name: "packages/effect-drizzle-sqlite/package.json",
+		filetype: "json",
+		patch: "diff --git a/packages/effect-drizzle-sqlite/package.json b/packages/effect-drizzle-sqlite/package.json",
+	},
+	{
+		name: "packages/opencode/src/project/instance.ts",
+		filetype: "ts",
+		patch: "diff --git a/packages/opencode/src/project/instance.ts b/packages/opencode/src/project/instance.ts",
+	},
 	{ name: "packages/opencode/package.json", filetype: "json", patch: "diff --git a/packages/opencode/package.json b/packages/opencode/package.json" },
-	{ name: "packages/opencode/src/server/routes/instance/httpapi/server.ts", filetype: "ts", patch: "diff --git a/packages/opencode/src/server/routes/instance/httpapi/server.ts b/packages/opencode/src/server/routes/instance/httpapi/server.ts" },
+	{
+		name: "packages/opencode/src/server/routes/instance/httpapi/server.ts",
+		filetype: "ts",
+		patch: "diff --git a/packages/opencode/src/server/routes/instance/httpapi/server.ts b/packages/opencode/src/server/routes/instance/httpapi/server.ts",
+	},
 ]
 
 describe("filterChangedFiles", () => {
@@ -59,16 +75,15 @@ describe("filterChangedFiles", () => {
 	})
 
 	test("matches all query tokens across path segments", () => {
-		expect(filterChangedFiles(packageFiles, "project instance").map((entry) => entry.file.name)).toEqual([
-			"packages/opencode/src/project/instance.ts",
-		])
+		expect(filterChangedFiles(packageFiles, "project instance").map((entry) => entry.file.name)).toEqual(["packages/opencode/src/project/instance.ts"])
 	})
 
 	test("ranks basename matches over the common packages prefix", () => {
-		expect(filterChangedFiles(packageFiles, "package").map((entry) => entry.file.name).slice(0, 2)).toEqual([
-			"packages/effect-drizzle-sqlite/package.json",
-			"packages/opencode/package.json",
-		])
+		expect(
+			filterChangedFiles(packageFiles, "package")
+				.map((entry) => entry.file.name)
+				.slice(0, 2),
+		).toEqual(["packages/effect-drizzle-sqlite/package.json", "packages/opencode/package.json"])
 	})
 
 	test("fuzzy matches abbreviated tokens inside path segments", () => {

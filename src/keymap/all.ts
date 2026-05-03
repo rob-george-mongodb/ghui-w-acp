@@ -58,22 +58,18 @@ export interface AppCtx {
 const App = context<AppCtx>()
 
 const modalActive = (a: AppCtx): boolean =>
-	a.closeModalActive
-	|| a.mergeModalActive
-	|| a.commentThreadModalActive
-	|| a.changedFilesModalActive
-	|| a.submitReviewModalActive
-	|| a.labelModalActive
-	|| a.themeModalActive
-	|| a.openRepositoryModalActive
-	|| a.commentModalActive
-	|| a.commandPaletteActive
+	a.closeModalActive ||
+	a.mergeModalActive ||
+	a.commentThreadModalActive ||
+	a.changedFilesModalActive ||
+	a.submitReviewModalActive ||
+	a.labelModalActive ||
+	a.themeModalActive ||
+	a.openRepositoryModalActive ||
+	a.commentModalActive ||
+	a.commandPaletteActive
 
-const inListMode = (a: AppCtx): boolean =>
-	!modalActive(a)
-	&& !a.filterMode
-	&& !a.diffFullView
-	&& !a.detailFullView
+const inListMode = (a: AppCtx): boolean => !modalActive(a) && !a.filterMode && !a.diffFullView && !a.detailFullView
 
 export const appKeymap = App(
 	// Always-on: command palette opener

@@ -40,7 +40,9 @@ const groupAgeWidth = (pullRequests: readonly PullRequestItem[]) => {
 const GroupTitle = ({ label, color, filterText }: { label: string; color: string; filterText: string }) => (
 	<TextLine>
 		<span fg={color}>{GROUP_ICON} </span>
-		<span fg={color} attributes={TextAttributes.BOLD}><MatchedCell text={label} width={label.length} query={filterText} /></span>
+		<span fg={color} attributes={TextAttributes.BOLD}>
+			<MatchedCell text={label} width={label.length} query={filterText} />
+		</span>
 	</TextLine>
 )
 
@@ -70,7 +72,8 @@ export const buildPullRequestListRows = ({
 	if (showFilterBar) rows.push({ _tag: "filter" })
 	if (status === "loading" && itemCount === 0) rows.push({ _tag: "message", text: "- Loading pull requests...", color: colors.muted })
 	if (status === "error") rows.push({ _tag: "message", text: `- ${error ?? "Could not load pull requests."}`, color: colors.error })
-	if (status === "ready" && itemCount === 0) rows.push({ _tag: "message", text: filterText.length > 0 ? "- No matching pull requests." : "- No open pull requests.", color: colors.muted })
+	if (status === "ready" && itemCount === 0)
+		rows.push({ _tag: "message", text: filterText.length > 0 ? "- No matching pull requests." : "- No open pull requests.", color: colors.muted })
 	for (const [repository, pullRequests] of groups) {
 		rows.push({ _tag: "group", repository, pullRequests })
 		for (const pullRequest of pullRequests) rows.push({ _tag: "pull-request", pullRequest, groupPullRequests: pullRequests })
@@ -115,9 +118,13 @@ const PullRequestRow = ({
 			<TextLine width={contentWidth} fg={display.rowFg} bg={selected ? colors.selectedBg : undefined}>
 				<span fg={display.indicatorFg}>{fitCell(reviewIcon(pullRequest), reviewWidth)}</span>
 				<span> </span>
-				<span fg={display.numberFg}><MatchedCell text={`#${pullRequest.number}`} width={numberWidth} query={filterText} align="right" /></span>
+				<span fg={display.numberFg}>
+					<MatchedCell text={`#${pullRequest.number}`} width={numberWidth} query={filterText} align="right" />
+				</span>
 				<span> </span>
-				<span><MatchedCell text={pullRequest.title} width={titleWidth} query={filterText} /></span>
+				<span>
+					<MatchedCell text={pullRequest.title} width={titleWidth} query={filterText} />
+				</span>
 				<span fg={display.checkFg}>{fitCell(display.checkText, checkWidth, "right")}</span>
 				<span fg={colors.muted}>{fitCell(ageText, ageWidth, "right")}</span>
 				{fillerWidth > 0 ? <span>{" ".repeat(fillerWidth)}</span> : null}

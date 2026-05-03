@@ -8,7 +8,7 @@ type CommandResult = {
 }
 
 const root = process.cwd()
-const rootPackageJson = await Bun.file(join(root, "package.json")).json() as { name: string; version: string }
+const rootPackageJson = (await Bun.file(join(root, "package.json")).json()) as { name: string; version: string }
 
 const run = async (cmd: readonly string[], cwd: string): Promise<CommandResult> => {
 	const proc = Bun.spawnSync({ cmd: [...cmd], cwd, stdout: "pipe", stderr: "pipe" })

@@ -71,8 +71,7 @@ export const availableMergeActions = (info: PullRequestMergeInfo | null): readon
 	return mergeActions.filter((action) => action.isAvailable(info))
 }
 
-export const getMergeActionDefinition = (action: PullRequestMergeAction): MergeActionDefinition =>
-	mergeActionDefinitions[action]
+export const getMergeActionDefinition = (action: PullRequestMergeAction): MergeActionDefinition => mergeActionDefinitions[action]
 
 export const mergeInfoFromPullRequest = (pullRequest: PullRequestItem): PullRequestMergeInfo => ({
 	repository: pullRequest.repository,

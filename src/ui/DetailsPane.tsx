@@ -27,7 +27,8 @@ export type DetailConversationStatus = "idle" | "loading" | "ready"
 
 const pullRequestReferencePattern = /(#[0-9]+)/g
 const codeFencePattern = /^```\s*([a-zA-Z0-9_-]+)?/
-const codeTokenPattern = /(\/\/.*|`(?:\\.|[^`])*`|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\b(?:async|await|break|case|catch|class|const|continue|default|else|export|extends|finally|for|from|function|if|import|interface|let|new|return|switch|throw|try|type|var|while|yield)\b|\b(?:true|false|null|undefined)\b|\b\d+(?:\.\d+)?\b)/g
+const codeTokenPattern =
+	/(\/\/.*|`(?:\\.|[^`])*`|"(?:\\.|[^"])*"|'(?:\\.|[^'])*'|\b(?:async|await|break|case|catch|class|const|continue|default|else|export|extends|finally|for|from|function|if|import|interface|let|new|return|switch|throw|try|type|var|while|yield)\b|\b(?:true|false|null|undefined)\b|\b\d+(?:\.\d+)?\b)/g
 const codeFenceLine = (line: string) => line.trim().replace(/\\`/g, "`").match(codeFencePattern)
 
 export const wrapText = (text: string, width: number): string[] => {
@@ -75,7 +76,7 @@ const parseCodeSegments = (text: string): PreviewLine["segments"] => {
 		const token = match[0]
 		const fg = token.startsWith("//")
 			? colors.muted
-			: token.startsWith("`") || token.startsWith("\"") || token.startsWith("'")
+			: token.startsWith("`") || token.startsWith('"') || token.startsWith("'")
 				? colors.inlineCode
 				: /^\d/.test(token)
 					? colors.status.review
@@ -91,7 +92,10 @@ const parseCodeSegments = (text: string): PreviewLine["segments"] => {
 
 const wrapPreviewSegments = (segments: PreviewLine["segments"], width: number, indent = ""): Array<PreviewLine> => {
 	const tokens = segments.flatMap((segment) =>
-		segment.text.split(/(\s+)/).filter((token) => token.length > 0).map((token) => ({ ...segment, text: token })),
+		segment.text
+			.split(/(\s+)/)
+			.filter((token) => token.length > 0)
+			.map((token) => ({ ...segment, text: token })),
 	)
 
 	const lines: Array<PreviewLine> = []
@@ -225,9 +229,7 @@ export const truncateConversationPath = (path: string, width: number) => {
 const conversationItemGroups = (item: PullRequestConversationItem, width: number): readonly (readonly CommentSegment[])[] => {
 	if (item._tag !== "review-comment") return []
 	const pathWidth = Math.max(12, width - item.author.length - 20)
-	return [[
-		{ text: truncateConversationPath(item.path, pathWidth), fg: colors.inlineCode },
-	]]
+	return [[{ text: truncateConversationPath(item.path, pathWidth), fg: colors.inlineCode }]]
 }
 
 const conversationPreview = ({
@@ -241,10 +243,10 @@ const conversationPreview = ({
 	readonly width: number
 	readonly limit: number
 }): Array<PreviewLine> => {
-	if (status === "idle" || (status === "ready" && items.length === 0) || limit <= 0) return []
+	if (status !== "ready" || items.length === 0 || limit <= 0) return []
 	const rows: Array<PreviewLine> = []
 	const title = "Conversation"
-	const countText = status === "loading" ? "loading" : commentCountText(items.length)
+	const countText = commentCountText(items.length)
 	const gap = Math.max(2, width - title.length - countText.length)
 	rows.push({
 		segments: [
@@ -253,10 +255,6 @@ const conversationPreview = ({
 			{ text: countText, fg: colors.muted },
 		],
 	})
-	if (items.length === 0) {
-		rows.push({ segments: [{ text: "│ ", fg: colors.muted }, { text: "Loading comments...", fg: colors.muted }] })
-		return rows.slice(0, limit)
-	}
 
 	for (const item of items) {
 		if (rows.length >= limit) break
@@ -288,11 +286,7 @@ const detailBodyPreview = ({
 	})
 
 	if (conversationRows.length === 0) return summaryRows
-	return [
-		...summaryRows,
-		previewDivider(),
-		...conversationRows,
-	].slice(0, limit)
+	return [...summaryRows, previewDivider(), ...conversationRows].slice(0, limit)
 }
 
 const deduplicateChecks = (checks: readonly CheckItem[]): CheckItem[] => {
@@ -347,7 +341,9 @@ const ChecksSection = ({ checks, contentWidth }: { checks: readonly CheckItem[];
 	return (
 		<box flexDirection="column">
 			<TextLine>
-				<span fg={colors.count} attributes={TextAttributes.BOLD}>Checks</span>
+				<span fg={colors.count} attributes={TextAttributes.BOLD}>
+					Checks
+				</span>
 			</TextLine>
 			{Array.from({ length: rows }, (_, rowIndex) => {
 				return (
@@ -362,7 +358,9 @@ const ChecksSection = ({ checks, contentWidth }: { checks: readonly CheckItem[];
 											<span fg={checkColor(check)}>{checkIcon(check)} </span>
 											<span fg={colors.text}>{fitCell(check.name, nameCol)}</span>
 										</>
-									) : <span>{" ".repeat(colWidth)}</span>}
+									) : (
+										<span>{" ".repeat(colWidth)}</span>
+									)}
 								</Fragment>
 							)
 						})}
@@ -373,10 +371,16 @@ const ChecksSection = ({ checks, contentWidth }: { checks: readonly CheckItem[];
 	)
 }
 
-const conversationDividerBodyRow = (pullRequest: PullRequestItem, contentWidth: number, conversationItems: readonly PullRequestConversationItem[], conversationStatus: DetailConversationStatus) => {
+const conversationDividerBodyRow = (
+	pullRequest: PullRequestItem,
+	contentWidth: number,
+	conversationItems: readonly PullRequestConversationItem[],
+	conversationStatus: DetailConversationStatus,
+) => {
 	if (!pullRequest.detailLoaded) return null
-	const dividerIndex = detailBodyPreview({ pullRequest, contentWidth, limit: DETAIL_BODY_SCROLL_LIMIT, conversationItems, conversationStatus })
-		.findIndex((line) => line.divider === true)
+	const dividerIndex = detailBodyPreview({ pullRequest, contentWidth, limit: DETAIL_BODY_SCROLL_LIMIT, conversationItems, conversationStatus }).findIndex(
+		(line) => line.divider === true,
+	)
 	return dividerIndex >= 0 ? dividerIndex : null
 }
 
@@ -423,13 +427,24 @@ export const getDetailHeaderHeight = (pullRequest: PullRequestItem | null, paneW
 	return titleLines + 3 + checksHeight
 }
 
-export const getDetailBodyHeight = (pullRequest: PullRequestItem | null, contentWidth: number, bodyLines = DETAIL_BODY_LINES, conversationItems: readonly PullRequestConversationItem[] = [], conversationStatus: DetailConversationStatus = "idle") => {
+export const getDetailBodyHeight = (
+	pullRequest: PullRequestItem | null,
+	contentWidth: number,
+	bodyLines = DETAIL_BODY_LINES,
+	conversationItems: readonly PullRequestConversationItem[] = [],
+	conversationStatus: DetailConversationStatus = "idle",
+) => {
 	if (!pullRequest) return bodyLines
 	if (!pullRequest.detailLoaded) return bodyLines
 	return detailBodyPreview({ pullRequest, contentWidth, limit: bodyLines, conversationItems, conversationStatus }).length
 }
 
-export const getScrollableDetailBodyHeight = (pullRequest: PullRequestItem | null, contentWidth: number, conversationItems: readonly PullRequestConversationItem[] = [], conversationStatus: DetailConversationStatus = "idle") => {
+export const getScrollableDetailBodyHeight = (
+	pullRequest: PullRequestItem | null,
+	contentWidth: number,
+	conversationItems: readonly PullRequestConversationItem[] = [],
+	conversationStatus: DetailConversationStatus = "idle",
+) => {
 	return getDetailBodyHeight(pullRequest, contentWidth, DETAIL_BODY_SCROLL_LIMIT, conversationItems, conversationStatus)
 }
 
@@ -449,9 +464,10 @@ export const getDetailsPaneHeight = ({
 	showChecks?: boolean
 	conversationItems?: readonly PullRequestConversationItem[]
 	conversationStatus?: DetailConversationStatus
-}) => pullRequest
-	? getDetailHeaderHeight(pullRequest, paneWidth, showChecks) + getDetailBodyHeight(pullRequest, contentWidth, bodyLines, conversationItems, conversationStatus)
-	: bodyLines + DETAIL_PLACEHOLDER_ROWS + 1
+}) =>
+	pullRequest
+		? getDetailHeaderHeight(pullRequest, paneWidth, showChecks) + getDetailBodyHeight(pullRequest, contentWidth, bodyLines, conversationItems, conversationStatus)
+		: bodyLines + DETAIL_PLACEHOLDER_ROWS + 1
 
 export const DetailHeader = ({
 	pullRequest,
@@ -471,9 +487,7 @@ export const DetailHeader = ({
 	const unique = deduplicateChecks(pullRequest.checks)
 	const checkRows = checksRowCount(unique)
 	const statsText = diffStatText(pullRequest)
-	const labelsWidth = !pullRequest.detailLoaded
-		? "loading details...".length
-		: labels.reduce((total, label, index) => total + label.name.length + 2 + (index > 0 ? 1 : 0), 0)
+	const labelsWidth = !pullRequest.detailLoaded ? "loading details...".length : labels.reduce((total, label, index) => total + label.name.length + 2 + (index > 0 ? 1 : 0), 0)
 	const hasLabelContent = labelsWidth > 0
 	const showStats = contentWidth - labelsWidth - statsText.length >= (hasLabelContent ? 2 : 0)
 	const statsGap = Math.max(hasLabelContent ? 2 : 0, contentWidth - labelsWidth - statsText.length)
@@ -510,12 +524,19 @@ export const DetailHeader = ({
 			</box>
 			<PaddedRow>
 				<TextLine>
-					{!pullRequest.detailLoaded ? <span fg={colors.muted}>loading details...</span> : labels.length > 0 ? labels.map((label, index) => (
-						<Fragment key={label.name}>
-							{index > 0 ? <span fg={colors.muted}> </span> : null}
-							<span bg={labelColor(label)} fg={labelTextColor(labelColor(label))}> {label.name} </span>
-						</Fragment>
-					)) : null}
+					{!pullRequest.detailLoaded ? (
+						<span fg={colors.muted}>loading details...</span>
+					) : labels.length > 0 ? (
+						labels.map((label, index) => (
+							<Fragment key={label.name}>
+								{index > 0 ? <span fg={colors.muted}> </span> : null}
+								<span bg={labelColor(label)} fg={labelTextColor(labelColor(label))}>
+									{" "}
+									{label.name}{" "}
+								</span>
+							</Fragment>
+						))
+					) : null}
 					{showStats ? (
 						<>
 							{statsGap > 0 ? <span fg={colors.muted}>{" ".repeat(statsGap)}</span> : null}
@@ -524,13 +545,17 @@ export const DetailHeader = ({
 					) : null}
 				</TextLine>
 			</PaddedRow>
-			<box height={1}><Divider width={paneWidth} /></box>
+			<box height={1}>
+				<Divider width={paneWidth} />
+			</box>
 			{showChecks && unique.length > 0 ? (
 				<>
 					<box height={checkRows + 1} paddingLeft={1} paddingRight={1}>
 						<ChecksSection checks={pullRequest.checks} contentWidth={contentWidth} />
 					</box>
-					<box height={1}><Divider width={paneWidth} /></box>
+					<box height={1}>
+						<Divider width={paneWidth} />
+					</box>
 				</>
 			) : null}
 		</>
@@ -577,15 +602,15 @@ export const DetailBody = ({
 
 	return (
 		<box flexDirection="column" height={previewLines.length}>
-			{previewLines.map((line, index) => (
+			{previewLines.map((line, index) =>
 				line.divider === true ? (
 					<Divider key={`${pullRequest.url}-${index}`} width={paneWidth} />
 				) : (
 					<PaddedRow key={`${pullRequest.url}-${index}`}>
 						<CommentSegmentsLine segments={line.segments} />
 					</PaddedRow>
-				)
-			))}
+				),
+			)}
 		</box>
 	)
 }
@@ -599,7 +624,9 @@ export const StatusCard = ({ content, width }: { content: DetailPlaceholderConte
 		<TextLine>
 			<span fg={colors.separator}>{offset}│</span>
 			{bold ? (
-				<span fg={fg} attributes={TextAttributes.BOLD}>{centerCell(text, cardInnerWidth)}</span>
+				<span fg={fg} attributes={TextAttributes.BOLD}>
+					{centerCell(text, cardInnerWidth)}
+				</span>
 			) : (
 				<span fg={fg}>{centerCell(text, cardInnerWidth)}</span>
 			)}
@@ -620,7 +647,9 @@ export const StatusCard = ({ content, width }: { content: DetailPlaceholderConte
 export const DetailPlaceholder = ({ content, paneWidth }: { content: DetailPlaceholderContent; paneWidth: number }) => (
 	<box flexDirection="column">
 		<StatusCard content={content} width={paneWidth} />
-		<box height={1}><Divider width={paneWidth} /></box>
+		<box height={1}>
+			<Divider width={paneWidth} />
+		</box>
 	</box>
 )
 
@@ -671,7 +700,17 @@ export const DetailsPane = ({
 			{pullRequest ? (
 				<>
 					<DetailHeader pullRequest={pullRequest} viewerUsername={viewerUsername} contentWidth={contentWidth} paneWidth={paneWidth} showChecks={showChecks} />
-					<DetailBody pullRequest={pullRequest} contentWidth={contentWidth} paneWidth={paneWidth} bodyLines={bodyLines} bodyLineLimit={bodyLineLimit} conversationItems={conversationItems} conversationStatus={conversationStatus} loadingIndicator={loadingIndicator} themeId={themeId} />
+					<DetailBody
+						pullRequest={pullRequest}
+						contentWidth={contentWidth}
+						paneWidth={paneWidth}
+						bodyLines={bodyLines}
+						bodyLineLimit={bodyLineLimit}
+						conversationItems={conversationItems}
+						conversationStatus={conversationStatus}
+						loadingIndicator={loadingIndicator}
+						themeId={themeId}
+					/>
 				</>
 			) : (
 				<>

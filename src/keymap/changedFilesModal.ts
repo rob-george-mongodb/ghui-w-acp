@@ -15,7 +15,7 @@ export const changedFilesModalKeymap = ChangedFiles(
 		id: "changed-files.select",
 		title: "Jump to file",
 		keys: ["return"],
-		enabled: (s) => s.hasResults ? true : "No matching files.",
+		enabled: (s) => (s.hasResults ? true : "No matching files."),
 		run: (s) => s.selectFile(),
 	},
 	{ id: "changed-files.up", title: "Up", keys: ["k", "up", "ctrl+p", "ctrl+k"], run: (s) => s.moveSelection(-1) },

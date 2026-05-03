@@ -56,25 +56,26 @@ export type PullRequestDiffState = Data.TaggedEnum<{
 
 export const PullRequestDiffState = Data.taggedEnum<PullRequestDiffState>()
 
-export const createDiffSyntaxStyle = () => SyntaxStyle.fromStyles({
-	keyword: { fg: parseColor(colors.accent), bold: true },
-	"keyword.import": { fg: parseColor(colors.accent), bold: true },
-	string: { fg: parseColor(colors.inlineCode) },
-	comment: { fg: parseColor(colors.muted), italic: true },
-	number: { fg: parseColor(colors.status.review) },
-	boolean: { fg: parseColor(colors.status.review) },
-	constant: { fg: parseColor(colors.status.review) },
-	function: { fg: parseColor(colors.status.passing) },
-	"function.call": { fg: parseColor(colors.status.passing) },
-	constructor: { fg: parseColor(colors.status.draft) },
-	type: { fg: parseColor(colors.status.draft) },
-	operator: { fg: parseColor(colors.status.failing) },
-	variable: { fg: parseColor(colors.text) },
-	property: { fg: parseColor(colors.status.review) },
-	bracket: { fg: parseColor(colors.text) },
-	punctuation: { fg: parseColor(colors.text) },
-	default: { fg: parseColor(colors.text) },
-})
+export const createDiffSyntaxStyle = () =>
+	SyntaxStyle.fromStyles({
+		keyword: { fg: parseColor(colors.accent), bold: true },
+		"keyword.import": { fg: parseColor(colors.accent), bold: true },
+		string: { fg: parseColor(colors.inlineCode) },
+		comment: { fg: parseColor(colors.muted), italic: true },
+		number: { fg: parseColor(colors.status.review) },
+		boolean: { fg: parseColor(colors.status.review) },
+		constant: { fg: parseColor(colors.status.review) },
+		function: { fg: parseColor(colors.status.passing) },
+		"function.call": { fg: parseColor(colors.status.passing) },
+		constructor: { fg: parseColor(colors.status.draft) },
+		type: { fg: parseColor(colors.status.draft) },
+		operator: { fg: parseColor(colors.status.failing) },
+		variable: { fg: parseColor(colors.text) },
+		property: { fg: parseColor(colors.status.review) },
+		bracket: { fg: parseColor(colors.text) },
+		punctuation: { fg: parseColor(colors.text) },
+		default: { fg: parseColor(colors.text) },
+	})
 
 const unquoteDiffPath = (path: string) => path.replace(/^"|"$/g, "").replace(/^a\//, "").replace(/^b\//, "")
 
@@ -201,9 +202,8 @@ const whitespaceEquivalentMatches = (deletions: readonly string[], additions: re
 
 	for (let oldIndex = oldKeys.length - 1; oldIndex >= 0; oldIndex--) {
 		for (let newIndex = newKeys.length - 1; newIndex >= 0; newIndex--) {
-			lengths[oldIndex]![newIndex] = oldKeys[oldIndex] === newKeys[newIndex]
-				? lengths[oldIndex + 1]![newIndex + 1]! + 1
-				: Math.max(lengths[oldIndex + 1]![newIndex]!, lengths[oldIndex]![newIndex + 1]!)
+			lengths[oldIndex]![newIndex] =
+				oldKeys[oldIndex] === newKeys[newIndex] ? lengths[oldIndex + 1]![newIndex + 1]! + 1 : Math.max(lengths[oldIndex + 1]![newIndex]!, lengths[oldIndex]![newIndex + 1]!)
 		}
 	}
 
@@ -280,7 +280,7 @@ export const minimizeWhitespacePatch = (patch: string) => {
 	const lines = patch.split("\n")
 	const minimized: string[] = []
 
-	for (let index = 0; index < lines.length;) {
+	for (let index = 0; index < lines.length; ) {
 		const line = lines[index]!
 		if (!line.match(hunkHeaderPattern)) {
 			minimized.push(line)
@@ -315,7 +315,7 @@ export const splitPatchFiles = (patch: string): readonly DiffFilePatch[] => {
 
 	return matches.map((match, index) => {
 		const start = match.index ?? 0
-		const end = index + 1 < matches.length ? matches[index + 1]!.index ?? trimmed.length : trimmed.length
+		const end = index + 1 < matches.length ? (matches[index + 1]!.index ?? trimmed.length) : trimmed.length
 		const filePatch = normalizeHunkLineCounts(trimmed.slice(start, end).trimEnd())
 		const name = patchFileName(filePatch)
 		return { name, filetype: pathToFiletype(name), patch: filePatch }
@@ -324,15 +324,9 @@ export const splitPatchFiles = (patch: string): readonly DiffFilePatch[] => {
 
 export const pullRequestDiffKey = (pullRequest: PullRequestItem) => `${pullRequest.repository}#${pullRequest.number}:${pullRequest.headRefOid}`
 
-export const safeDiffFileIndex = (files: readonly DiffFilePatch[], index: number) =>
-	files.length > 0 ? Math.max(0, Math.min(index, files.length - 1)) : 0
+export const safeDiffFileIndex = (files: readonly DiffFilePatch[], index: number) => (files.length > 0 ? Math.max(0, Math.min(index, files.length - 1)) : 0)
 
-export const buildStackedDiffFiles = (
-	files: readonly DiffFilePatch[],
-	view: DiffView,
-	wrapMode: DiffWrapMode,
-	width: number,
-): readonly StackedDiffFilePatch[] => {
+export const buildStackedDiffFiles = (files: readonly DiffFilePatch[], view: DiffView, wrapMode: DiffWrapMode, width: number): readonly StackedDiffFilePatch[] => {
 	let offset = 0
 	return files.map((file, index) => {
 		const diffHeight = patchRenderableLineCount(file.patch, view, wrapMode, width)
@@ -366,8 +360,7 @@ export const stackedDiffFileIndexAtLine = (stackedFiles: readonly StackedDiffFil
 	return match
 }
 
-export const stackedDiffFileAtLine = (stackedFiles: readonly StackedDiffFilePatch[], line: number) =>
-	stackedFiles[stackedDiffFileIndexAtLine(stackedFiles, line)]
+export const stackedDiffFileAtLine = (stackedFiles: readonly StackedDiffFilePatch[], line: number) => stackedFiles[stackedDiffFileIndexAtLine(stackedFiles, line)]
 
 export const diffStatText = (pullRequest: PullRequestItem) => {
 	if (!pullRequest.detailLoaded) return "loading details"
@@ -378,7 +371,7 @@ export const diffStatText = (pullRequest: PullRequestItem) => {
 
 export const diffCommentLocationKey = (location: Pick<PullRequestReviewComment, "path" | "side" | "line">) => `${location.path}:${location.side}:${location.line}`
 
-export const diffCommentSideLabel = (anchor: Pick<DiffCommentAnchor, "side">) => anchor.side === "RIGHT" ? "→" : "←"
+export const diffCommentSideLabel = (anchor: Pick<DiffCommentAnchor, "side">) => (anchor.side === "RIGHT" ? "→" : "←")
 
 export const diffCommentLineLabel = (anchor: Pick<DiffCommentAnchor, "side" | "line">) => `${anchor.side === "RIGHT" ? "+" : "-"}${anchor.line}`
 
@@ -388,9 +381,7 @@ type PendingDiffCommentAnchor = Omit<DiffCommentAnchor, "renderLine">
 
 const diffContentWidth = (lines: readonly string[], view: DiffView, width: number) => {
 	const lineNumberGutterWidth = patchLineNumberGutterWidth(lines)
-	return view === "split"
-		? Math.max(1, Math.floor(width / 2) - lineNumberGutterWidth)
-		: Math.max(1, width - lineNumberGutterWidth)
+	return view === "split" ? Math.max(1, Math.floor(width / 2) - lineNumberGutterWidth) : Math.max(1, width - lineNumberGutterWidth)
 }
 
 export const diffFileStats = (file: DiffFilePatch): DiffFileStats => {
@@ -415,10 +406,7 @@ export const diffFileStats = (file: DiffFilePatch): DiffFileStats => {
 }
 
 export const diffFileStatsText = (stats: DiffFileStats) => {
-	return [
-		stats.additions > 0 ? `+${stats.additions}` : null,
-		stats.deletions > 0 ? `-${stats.deletions}` : null,
-	].filter((part): part is string => part !== null).join(" ")
+	return [stats.additions > 0 ? `+${stats.additions}` : null, stats.deletions > 0 ? `-${stats.deletions}` : null].filter((part): part is string => part !== null).join(" ")
 }
 
 export const getDiffCommentAnchors = (file: DiffFilePatch, view: DiffView = "unified", wrapMode: DiffWrapMode = "none", width = 120): readonly DiffCommentAnchor[] => {
@@ -506,12 +494,14 @@ export const getStackedDiffCommentAnchors = (
 	wrapMode: DiffWrapMode = "none",
 	width = 120,
 ): readonly StackedDiffCommentAnchor[] =>
-	stackedFiles.flatMap((stackedFile) => getDiffCommentAnchors(stackedFile.file, view, wrapMode, width).map((anchor) => ({
-		...anchor,
-		fileIndex: stackedFile.index,
-		localRenderLine: anchor.renderLine,
-		renderLine: stackedFile.diffStartLine + anchor.renderLine,
-	})))
+	stackedFiles.flatMap((stackedFile) =>
+		getDiffCommentAnchors(stackedFile.file, view, wrapMode, width).map((anchor) => ({
+			...anchor,
+			fileIndex: stackedFile.index,
+			localRenderLine: anchor.renderLine,
+			renderLine: stackedFile.diffStartLine + anchor.renderLine,
+		})),
+	)
 
 export const verticalDiffAnchor = <Anchor extends Pick<DiffCommentAnchor, "renderLine" | "side">>(
 	anchors: readonly Anchor[],
@@ -526,18 +516,11 @@ export const verticalDiffAnchor = <Anchor extends Pick<DiffCommentAnchor, "rende
 	const nextRow = rows[Math.max(0, Math.min(rows.length - 1, currentRowIndex + delta))]
 	if (nextRow === undefined) return null
 	const targetSide = preferredSide ?? current.side
-	return anchors.find((anchor) => anchor.renderLine === nextRow && anchor.side === targetSide)
-		?? anchors.find((anchor) => anchor.renderLine === nextRow)
-		?? null
+	return anchors.find((anchor) => anchor.renderLine === nextRow && anchor.side === targetSide) ?? anchors.find((anchor) => anchor.renderLine === nextRow) ?? null
 }
 
-export const diffAnchorOnSide = <Anchor extends Pick<DiffCommentAnchor, "renderLine" | "side">>(
-	anchors: readonly Anchor[],
-	currentAnchor: Anchor | null,
-	side: DiffCommentSide,
-) => currentAnchor
-	? anchors.find((anchor) => anchor.renderLine === currentAnchor.renderLine && anchor.side === side) ?? null
-	: null
+export const diffAnchorOnSide = <Anchor extends Pick<DiffCommentAnchor, "renderLine" | "side">>(anchors: readonly Anchor[], currentAnchor: Anchor | null, side: DiffCommentSide) =>
+	currentAnchor ? (anchors.find((anchor) => anchor.renderLine === currentAnchor.renderLine && anchor.side === side) ?? null) : null
 
 export const nearestDiffCommentAnchorIndex = (anchors: readonly DiffCommentAnchor[], renderLine: number) => {
 	if (anchors.length === 0) return 0

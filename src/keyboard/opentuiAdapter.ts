@@ -34,10 +34,13 @@ export const useOpenTuiSubscribe = (): KeySubscribe => {
 		for (const handler of handlersRef.current) handler(stroke)
 	})
 
-	return useMemo<KeySubscribe>(() => (handler) => {
-		handlersRef.current.add(handler)
-		return () => {
-			handlersRef.current.delete(handler)
-		}
-	}, [])
+	return useMemo<KeySubscribe>(
+		() => (handler) => {
+			handlersRef.current.add(handler)
+			return () => {
+				handlersRef.current.delete(handler)
+			}
+		},
+		[],
+	)
 }

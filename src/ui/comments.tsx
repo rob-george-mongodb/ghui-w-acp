@@ -23,10 +23,9 @@ export interface CommentDisplayItem {
 	readonly side?: DiffCommentSide | null
 }
 
-export const commentCountText = (count: number) => count === 1 ? "1 comment" : `${count} comments`
+export const commentCountText = (count: number) => (count === 1 ? "1 comment" : `${count} comments`)
 
-export const commentSideColor = (side: DiffCommentSide | null | undefined) =>
-	side === "LEFT" ? colors.status.failing : side === "RIGHT" ? colors.status.passing : colors.count
+export const commentSideColor = (side: DiffCommentSide | null | undefined) => (side === "LEFT" ? colors.status.failing : side === "RIGHT" ? colors.status.passing : colors.count)
 
 const commentTimestamp = (date: Date | null) => {
 	if (!date) return ""
@@ -40,11 +39,10 @@ const commentTimestamp = (date: Date | null) => {
 }
 
 const inlineCommentSegments = (text: string, fg = colors.text): readonly CommentSegment[] =>
-	text.split(/(`[^`]+`)/g).filter((part) => part.length > 0).map((part) =>
-		part.startsWith("`") && part.endsWith("`")
-			? { text: part.slice(1, -1), fg: colors.inlineCode }
-			: { text: part, fg },
-	)
+	text
+		.split(/(`[^`]+`)/g)
+		.filter((part) => part.length > 0)
+		.map((part) => (part.startsWith("`") && part.endsWith("`") ? { text: part.slice(1, -1), fg: colors.inlineCode } : { text: part, fg }))
 
 const wrapCommentText = (body: string, width: number) => {
 	const safeWidth = Math.max(1, width)
@@ -87,21 +85,10 @@ export const commentMetaSegments = ({
 	return segments
 }
 
-export const commentBodyRows = ({
-	keyPrefix,
-	body,
-	width,
-}: {
-	readonly keyPrefix: string
-	readonly body: string
-	readonly width: number
-}): readonly CommentDisplayLine[] =>
+export const commentBodyRows = ({ keyPrefix, body, width }: { readonly keyPrefix: string; readonly body: string; readonly width: number }): readonly CommentDisplayLine[] =>
 	wrapCommentText(body, Math.max(1, width - 2)).map((line, index) => ({
 		key: `${keyPrefix}:body:${index}`,
-		segments: [
-			{ text: "│ ", fg: colors.muted },
-			...inlineCommentSegments(line),
-		],
+		segments: [{ text: "│ ", fg: colors.muted }, ...inlineCommentSegments(line)],
 	}))
 
 export const commentDisplayRows = ({
@@ -127,17 +114,25 @@ export const firstCommentBodyLine = (body: string) => {
 
 export const CommentSegmentsLine = ({ segments }: { segments: readonly CommentSegment[] }) => (
 	<TextLine>
-		{segments.map((segment, index) => segment.bold ? (
-			<span key={index} fg={segment.fg} attributes={TextAttributes.BOLD}>{segment.text}</span>
-		) : (
-			<span key={index} fg={segment.fg}>{segment.text}</span>
-		))}
+		{segments.map((segment, index) =>
+			segment.bold ? (
+				<span key={index} fg={segment.fg} attributes={TextAttributes.BOLD}>
+					{segment.text}
+				</span>
+			) : (
+				<span key={index} fg={segment.fg}>
+					{segment.text}
+				</span>
+			),
+		)}
 	</TextLine>
 )
 
 export const CommentBodyLine = ({ body, width }: { body: string; width: number }) => (
-	<CommentSegmentsLine segments={[
-		{ text: "│ ", fg: colors.muted },
-		{ text: fitCell(firstCommentBodyLine(body), Math.max(1, width - 2)), fg: colors.text },
-	]} />
+	<CommentSegmentsLine
+		segments={[
+			{ text: "│ ", fg: colors.muted },
+			{ text: fitCell(firstCommentBodyLine(body), Math.max(1, width - 2)), fg: colors.text },
+		]}
+	/>
 )

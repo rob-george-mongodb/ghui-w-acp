@@ -1,3 +1,4 @@
+import { TextAttributes } from "@opentui/core"
 import { Data } from "effect"
 import type { PullRequestLabel, PullRequestMergeInfo, PullRequestReviewComment, PullRequestReviewEvent } from "../domain.js"
 import { availableMergeActions } from "../mergeActions.js"
@@ -5,7 +6,22 @@ import { clampCursor, commentEditorLines, cursorLineIndexForLines } from "./comm
 import { colors, filterThemeDefinitions, themeDefinitions, type ThemeId } from "./colors.js"
 import { commentDisplayRows, CommentSegmentsLine, type CommentDisplayLine } from "./comments.js"
 import { diffFileStats, diffFileStatsText, type DiffFilePatch } from "./diff.js"
-import { centerCell, Filler, fitCell, HintRow, MatchedCell, PlainLine, searchModalDims, SearchModalFrame, StandardModal, standardModalDims, TextLine } from "./primitives.js"
+import {
+	centerCell,
+	Divider,
+	Filler,
+	fitCell,
+	HintRow,
+	MatchedCell,
+	ModalFrame,
+	PaddedRow,
+	PlainLine,
+	searchModalDims,
+	SearchModalFrame,
+	StandardModal,
+	standardModalDims,
+	TextLine,
+} from "./primitives.js"
 import { labelColor, shortRepoName } from "./pullRequests.js"
 
 export interface LabelModalState {
@@ -53,6 +69,7 @@ export interface ChangedFilesModalState {
 export interface SubmitReviewModalState {
 	readonly repository: string | null
 	readonly number: number | null
+	readonly focus: "action" | "body"
 	readonly selectedIndex: number
 	readonly body: string
 	readonly cursor: number
@@ -104,7 +121,12 @@ interface FileTokenMatch {
 
 const PATH_WORD_BOUNDARIES = new Set(["-", "_", "."])
 
-const pathSearchTokens = (query: string) => query.trim().toLowerCase().split(/\s+/).filter((token) => token.length > 0)
+const pathSearchTokens = (query: string) =>
+	query
+		.trim()
+		.toLowerCase()
+		.split(/\s+/)
+		.filter((token) => token.length > 0)
 
 const pathSegments = (path: string): readonly PathSegment[] => {
 	const parts = path.split("/")
@@ -173,7 +195,10 @@ const tokenMatchInSegment = (segment: PathSegment, token: string): FileTokenMatc
 
 	let substringStart = segment.lower.indexOf(token)
 	while (substringStart >= 0) {
-		addCandidate(Array.from({ length: token.length }, (_, index) => substringStart + index), true)
+		addCandidate(
+			Array.from({ length: token.length }, (_, index) => substringStart + index),
+			true,
+		)
 		substringStart = segment.lower.indexOf(token, substringStart + 1)
 	}
 
@@ -299,6 +324,7 @@ export const initialChangedFilesModalState: ChangedFilesModalState = {
 export const initialSubmitReviewModalState: SubmitReviewModalState = {
 	repository: null,
 	number: null,
+	focus: "action",
 	selectedIndex: 0,
 	body: "",
 	cursor: 0,
@@ -386,7 +412,16 @@ export const OpenRepositoryModal = ({
 				</TextLine>
 			}
 			bodyPadding={1}
-			footer={<HintRow items={[{ key: "enter", label: "open" }, { key: "ctrl-u", label: "clear" }, { key: "ctrl-w", label: "word" }, { key: "esc", label: "cancel" }]} />}
+			footer={
+				<HintRow
+					items={[
+						{ key: "enter", label: "open" },
+						{ key: "ctrl-u", label: "clear" },
+						{ key: "ctrl-w", label: "word" },
+						{ key: "esc", label: "cancel" },
+					]}
+				/>
+			}
 		>
 			{state.error ? (
 				<PlainLine text={fitCell(state.error, contentWidth)} fg={colors.error} />
@@ -428,10 +463,7 @@ export const LabelModal = ({
 	const labelMessageTopRows = Math.max(0, Math.floor((maxVisible - 1) / 2))
 	const labelMessageBottomRows = Math.max(0, maxVisible - labelMessageTopRows - 1)
 	const selectedIndex = filtered.length === 0 ? 0 : Math.max(0, Math.min(state.selectedIndex, filtered.length - 1))
-	const scrollStart = Math.min(
-		Math.max(0, filtered.length - maxVisible),
-		Math.max(0, selectedIndex - maxVisible + 1),
-	)
+	const scrollStart = Math.min(Math.max(0, filtered.length - maxVisible), Math.max(0, selectedIndex - maxVisible + 1))
 	const visibleLabels = filtered.slice(scrollStart, scrollStart + maxVisible)
 	const title = state.repository ? `Labels  ${shortRepoName(state.repository)}` : "Labels"
 	const countText = state.loading ? "loading" : `${filtered.length}/${state.availableLabels.length}`
@@ -449,10 +481,15 @@ export const LabelModal = ({
 			footer={
 				<TextLine>
 					<span fg={colors.count}>↑↓</span>
-					<span fg={colors.muted}> move  </span>
+					<span fg={colors.muted}> move </span>
 					<span fg={colors.count}>esc</span>
 					<span fg={colors.muted}> close</span>
-					{filtered.length > maxVisible ? <span fg={colors.muted}>  {selectedIndex + 1}/{filtered.length}</span> : null}
+					{filtered.length > maxVisible ? (
+						<span fg={colors.muted}>
+							{" "}
+							{selectedIndex + 1}/{filtered.length}
+						</span>
+					) : null}
 				</TextLine>
 			}
 		>
@@ -480,7 +517,7 @@ export const LabelModal = ({
 							<TextLine bg={isSelected ? colors.selectedBg : undefined} fg={isSelected ? colors.selectedText : colors.text}>
 								<span fg={isActive ? colors.status.passing : colors.muted}>{marker}</span>
 								<span> </span>
-								<span bg={labelColor(label)}>  </span>
+								<span bg={labelColor(label)}> </span>
 								<span> {fitCell(label.name, nameWidth)}</span>
 							</TextLine>
 						</box>
@@ -511,10 +548,7 @@ export const ChangedFilesModal = ({
 	const { bodyHeight: maxVisible, rowWidth } = searchModalDims(modalWidth, modalHeight)
 	const filtered = results
 	const selectedIndex = filtered.length === 0 ? 0 : Math.max(0, Math.min(state.selectedIndex, filtered.length - 1))
-	const scrollStart = Math.min(
-		Math.max(0, filtered.length - maxVisible),
-		Math.max(0, selectedIndex - maxVisible + 1),
-	)
+	const scrollStart = Math.min(Math.max(0, filtered.length - maxVisible), Math.max(0, selectedIndex - maxVisible + 1))
 	const visibleFiles = filtered.slice(scrollStart, scrollStart + maxVisible)
 	const title = "Files"
 	const countText = `${filtered.length}/${totalCount}`
@@ -531,7 +565,15 @@ export const ChangedFilesModal = ({
 			query={state.query}
 			placeholder="Filter"
 			countText={countText}
-			footer={<HintRow items={[{ key: "↑↓", label: "move" }, { key: "enter", label: "jump" }, { key: "esc", label: "close" }]} />}
+			footer={
+				<HintRow
+					items={[
+						{ key: "↑↓", label: "move" },
+						{ key: "enter", label: "jump" },
+						{ key: "esc", label: "close" },
+					]}
+				/>
+			}
 		>
 			{visibleFiles.length === 0 ? (
 				<>
@@ -539,19 +581,26 @@ export const ChangedFilesModal = ({
 					<PlainLine text={centerCell(state.query.length > 0 ? "No matching files" : "No changed files", rowWidth)} fg={colors.muted} />
 					<Filler rows={messageBottomRows} prefix="bottom" />
 				</>
-			) : visibleFiles.map((entry, index) => {
-				const actualIndex = scrollStart + index
-				const isSelected = actualIndex === selectedIndex
-				const stats = diffFileStatsText(diffFileStats(entry.file)) || "0"
-				const statsWidth = Math.min(10, Math.max(3, stats.length))
-				const nameWidth = Math.max(1, rowWidth - statsWidth)
-				return (
-					<TextLine key={`${entry.index}:${entry.file.name}`} width={rowWidth} bg={isSelected ? colors.selectedBg : undefined} fg={isSelected ? colors.selectedText : colors.text}>
-						<MatchedCell text={entry.file.name} width={nameWidth} query={state.query} matchIndexes={entry.matchIndexes} />
-						<span fg={colors.muted}>{fitCell(stats, statsWidth, "right")}</span>
-					</TextLine>
-				)
-			})}
+			) : (
+				visibleFiles.map((entry, index) => {
+					const actualIndex = scrollStart + index
+					const isSelected = actualIndex === selectedIndex
+					const stats = diffFileStatsText(diffFileStats(entry.file)) || "0"
+					const statsWidth = Math.min(10, Math.max(3, stats.length))
+					const nameWidth = Math.max(1, rowWidth - statsWidth)
+					return (
+						<TextLine
+							key={`${entry.index}:${entry.file.name}`}
+							width={rowWidth}
+							bg={isSelected ? colors.selectedBg : undefined}
+							fg={isSelected ? colors.selectedText : colors.text}
+						>
+							<MatchedCell text={entry.file.name} width={nameWidth} query={state.query} matchIndexes={entry.matchIndexes} />
+							<span fg={colors.muted}>{fitCell(stats, statsWidth, "right")}</span>
+						</TextLine>
+					)
+				})
+			)}
 		</SearchModalFrame>
 	)
 }
@@ -579,7 +628,9 @@ export const MergeModal = ({
 	const repo = state.info?.repository ?? state.repository
 	const statusLine = state.info
 		? `${shortRepoName(state.info.repository)}  ${state.info.mergeable}  ${state.info.reviewStatus}  ${state.info.checkSummary ?? state.info.checkStatus}`
-		: repo ? shortRepoName(repo) : ""
+		: repo
+			? shortRepoName(repo)
+			: ""
 	const optionRows = Math.max(1, Math.floor(optionAreaHeight / 2))
 	const visibleOptions = options.slice(0, optionRows)
 	const loadingTopRows = Math.max(0, Math.floor((optionAreaHeight - 1) / 2))
@@ -594,7 +645,15 @@ export const MergeModal = ({
 			title={title}
 			headerRight={{ text: rightText, pending: state.running || state.loading }}
 			subtitle={<PlainLine text={fitCell(statusLine, contentWidth)} fg={colors.muted} />}
-			footer={<HintRow items={[{ key: "↑↓", label: "move" }, { key: "enter", label: "confirm" }, { key: "esc", label: "close" }]} />}
+			footer={
+				<HintRow
+					items={[
+						{ key: "↑↓", label: "move" },
+						{ key: "enter", label: "confirm" },
+						{ key: "esc", label: "close" },
+					]}
+				/>
+			}
 		>
 			{state.loading ? (
 				<>
@@ -663,7 +722,14 @@ export const CloseModal = ({
 			headerRight={{ text: rightText, pending: state.running }}
 			subtitle={<PlainLine text={fitCell("This will close the pull request without merging it.", contentWidth)} fg={colors.muted} />}
 			bodyPadding={1}
-			footer={<HintRow items={[{ key: "enter", label: "close" }, { key: "esc", label: "cancel" }]} />}
+			footer={
+				<HintRow
+					items={[
+						{ key: "enter", label: "close" },
+						{ key: "esc", label: "cancel" },
+					]}
+				/>
+			}
 		>
 			{state.error ? (
 				<PlainLine text={fitCell(state.error, contentWidth)} fg={colors.error} />
@@ -700,10 +766,7 @@ export const CommentModal = ({
 	const lineRanges = commentEditorLines(state.body)
 	const cursor = clampCursor(state.body, state.cursor)
 	const cursorLineIndex = cursorLineIndexForLines(lineRanges, cursor)
-	const visibleStart = Math.min(
-		Math.max(0, lineRanges.length - editorHeight),
-		Math.max(0, cursorLineIndex - editorHeight + 1),
-	)
+	const visibleStart = Math.min(Math.max(0, lineRanges.length - editorHeight), Math.max(0, cursorLineIndex - editorHeight + 1))
 	const visibleLines = lineRanges.slice(visibleStart, visibleStart + editorHeight)
 	const renderEditorLine = (line: { readonly text: string; readonly start: number; readonly end: number }, index: number) => {
 		const lineIndex = visibleStart + index
@@ -719,13 +782,15 @@ export const CommentModal = ({
 		const cursorInView = cursorColumn - viewStart
 		const before = visibleText.slice(0, cursorInView)
 		const placeholder = state.body.length === 0 ? "Write a comment..." : ""
-		const cursorChar = placeholder ? placeholder[0] ?? " " : visibleText[cursorInView] ?? " "
+		const cursorChar = placeholder ? (placeholder[0] ?? " ") : (visibleText[cursorInView] ?? " ")
 		const after = placeholder ? placeholder.slice(1) : visibleText.slice(cursorInView + 1)
 
 		return (
 			<TextLine key={lineIndex}>
 				{before ? <span fg={colors.text}>{before}</span> : null}
-				<span bg={colors.accent} fg={colors.background}>{cursorChar}</span>
+				<span bg={colors.accent} fg={colors.background}>
+					{cursorChar}
+				</span>
 				{after ? <span fg={placeholder ? colors.muted : colors.text}>{after}</span> : null}
 			</TextLine>
 		)
@@ -741,7 +806,15 @@ export const CommentModal = ({
 			headerRight={{ text: "enter save" }}
 			subtitle={<PlainLine text={fitCell(anchorLabel, contentWidth)} fg={colors.muted} />}
 			bodyPadding={1}
-			footer={<HintRow items={[{ key: "enter", label: "save" }, { key: "shift-enter", label: "newline" }, { key: "esc", label: "cancel" }]} />}
+			footer={
+				<HintRow
+					items={[
+						{ key: "enter", label: "save" },
+						{ key: "shift-enter", label: "newline" },
+						{ key: "esc", label: "cancel" },
+					]}
+				/>
+			}
 		>
 			{state.error ? <PlainLine text={fitCell(state.error, contentWidth)} fg={colors.error} /> : null}
 			{visibleLines.map(renderEditorLine)}
@@ -755,82 +828,116 @@ export const SubmitReviewModal = ({
 	modalHeight,
 	offsetLeft,
 	offsetTop,
-	loadingIndicator,
 }: {
 	state: SubmitReviewModalState
 	modalWidth: number
 	modalHeight: number
 	offsetLeft: number
 	offsetTop: number
-	loadingIndicator: string
 }) => {
-	const { contentWidth, bodyHeight } = standardModalDims(modalWidth, modalHeight)
+	const { innerWidth, contentWidth } = standardModalDims(modalWidth, modalHeight)
 	const selectedIndex = Math.max(0, Math.min(state.selectedIndex, submitReviewOptions.length - 1))
-	const editorHeight = Math.max(1, bodyHeight - submitReviewOptions.length - (state.error ? 1 : 0))
+	const headerRows = 1
+	const actionHeight = submitReviewOptions.length
+	const errorHeight = state.error ? 1 : 0
+	const footerRows = 1
+	const dividerRows = 3
+	const frameBorderRows = 2
+	const editorHeight = Math.max(1, modalHeight - frameBorderRows - headerRows - actionHeight - errorHeight - footerRows - dividerRows)
+	const actionDividerRow = headerRows
+	const editorDividerRow = headerRows + 1 + actionHeight
+	const footerDividerRow = editorDividerRow + 1 + errorHeight + editorHeight
 	const lineRanges = commentEditorLines(state.body)
 	const cursor = clampCursor(state.body, state.cursor)
 	const cursorLineIndex = cursorLineIndexForLines(lineRanges, cursor)
-	const visibleStart = Math.min(
-		Math.max(0, lineRanges.length - editorHeight),
-		Math.max(0, cursorLineIndex - editorHeight + 1),
-	)
+	const visibleStart = Math.min(Math.max(0, lineRanges.length - editorHeight), Math.max(0, cursorLineIndex - editorHeight + 1))
 	const visibleLines = lineRanges.slice(visibleStart, visibleStart + editorHeight)
-	const title = state.number ? `Submit review  #${state.number}` : "Submit review"
-	const rightText = state.running ? `${loadingIndicator} submitting` : submitReviewOptions[selectedIndex]?.title ?? "review"
-	const subtitleText = state.repository ? shortRepoName(state.repository) : "Choose a review action and optional summary"
+	const title = "Submit review"
+	const editorFocused = state.focus === "body"
 	const renderEditorLine = (line: { readonly text: string; readonly start: number; readonly end: number }, index: number) => {
 		const lineIndex = visibleStart + index
 		const isCursorLine = lineIndex === cursorLineIndex
 		const cursorColumn = Math.max(0, Math.min(cursor - line.start, line.text.length))
-		const viewStart = isCursorLine ? Math.max(0, cursorColumn - contentWidth + 1) : 0
+		const viewStart = editorFocused && isCursorLine ? Math.max(0, cursorColumn - contentWidth + 1) : 0
 		const visibleText = line.text.slice(viewStart, viewStart + contentWidth)
 
-		if (!isCursorLine) {
+		if (!editorFocused || !isCursorLine) {
+			if (state.body.length === 0 && lineIndex === 0) {
+				return <PlainLine key={lineIndex} text={fitCell("Optional review summary...", contentWidth)} fg={colors.muted} />
+			}
 			return <PlainLine key={lineIndex} text={fitCell(visibleText, contentWidth)} fg={state.body.length > 0 ? colors.text : colors.muted} />
 		}
 
 		const cursorInView = cursorColumn - viewStart
 		const before = visibleText.slice(0, cursorInView)
 		const placeholder = state.body.length === 0 ? "Optional review summary..." : ""
-		const cursorChar = placeholder ? placeholder[0] ?? " " : visibleText[cursorInView] ?? " "
+		const cursorChar = placeholder ? (placeholder[0] ?? " ") : (visibleText[cursorInView] ?? " ")
 		const after = placeholder ? placeholder.slice(1) : visibleText.slice(cursorInView + 1)
 
 		return (
 			<TextLine key={lineIndex}>
 				{before ? <span fg={colors.text}>{before}</span> : null}
-				<span bg={colors.accent} fg={colors.background}>{cursorChar}</span>
+				<span bg={colors.accent} fg={colors.background}>
+					{cursorChar}
+				</span>
 				{after ? <span fg={placeholder ? colors.muted : colors.text}>{after}</span> : null}
 			</TextLine>
 		)
 	}
 
 	return (
-		<StandardModal
-			left={offsetLeft}
-			top={offsetTop}
-			width={modalWidth}
-			height={modalHeight}
-			title={title}
-			headerRight={{ text: rightText, pending: state.running }}
-			subtitle={<PlainLine text={fitCell(subtitleText, contentWidth)} fg={colors.muted} />}
-			bodyPadding={1}
-			footer={<HintRow items={[{ key: "tab", label: "action" }, { key: "enter", label: "submit" }, { key: "shift-enter", label: "newline" }, { key: "esc", label: "cancel" }]} />}
-		>
-			{submitReviewOptions.map((option, index) => {
-				const isSelected = index === selectedIndex
-				const titleWidth = Math.min(18, Math.max(8, contentWidth - 8))
-				const descriptionWidth = Math.max(1, contentWidth - titleWidth - 4)
-				return (
-					<TextLine key={option.event} bg={isSelected ? colors.selectedBg : undefined} fg={isSelected ? colors.selectedText : colors.text}>
-						<span fg={submitReviewEventColor(option.event)}>{isSelected ? "›" : " "}</span>
-						<span> {fitCell(option.title, titleWidth)}</span>
-						<span fg={isSelected ? colors.selectedText : colors.muted}>{fitCell(option.description, descriptionWidth)}</span>
-					</TextLine>
-				)
-			})}
-			{state.error ? <PlainLine text={fitCell(state.error, contentWidth)} fg={colors.error} /> : null}
-			{visibleLines.map(renderEditorLine)}
-		</StandardModal>
+		<ModalFrame left={offsetLeft} top={offsetTop} width={modalWidth} height={modalHeight} junctionRows={[actionDividerRow, editorDividerRow, footerDividerRow]}>
+			<PaddedRow>
+				<TextLine>
+					<span fg={colors.accent} attributes={TextAttributes.BOLD}>
+						{title}
+					</span>
+				</TextLine>
+			</PaddedRow>
+			<Divider width={innerWidth} />
+			<box height={actionHeight} flexDirection="column" paddingLeft={1} paddingRight={1}>
+				{submitReviewOptions.map((option, index) => {
+					const isSelected = index === selectedIndex
+					const isFocusedSelection = isSelected && state.focus === "action"
+					const titleWidth = Math.min(18, Math.max(8, contentWidth - 8))
+					const descriptionWidth = Math.max(1, contentWidth - titleWidth - 4)
+					return (
+						<TextLine key={option.event} bg={isFocusedSelection ? colors.selectedBg : undefined} fg={isFocusedSelection ? colors.selectedText : colors.text}>
+							<span fg={submitReviewEventColor(option.event)}>{isFocusedSelection ? "›" : isSelected ? "✓" : " "}</span>
+							<span> {fitCell(option.title, titleWidth)}</span>
+							<span fg={isFocusedSelection ? colors.selectedText : colors.muted}>{fitCell(option.description, descriptionWidth)}</span>
+						</TextLine>
+					)
+				})}
+			</box>
+			<Divider width={innerWidth} />
+			{state.error ? (
+				<PaddedRow>
+					<PlainLine text={fitCell(state.error, contentWidth)} fg={colors.error} />
+				</PaddedRow>
+			) : null}
+			<box height={editorHeight} flexDirection="column" paddingLeft={1} paddingRight={1}>
+				{visibleLines.map(renderEditorLine)}
+			</box>
+			<Divider width={innerWidth} />
+			<PaddedRow>
+				<HintRow
+					items={
+						editorFocused
+							? [
+									{ key: "shift-enter", label: "newline" },
+									{ key: "enter", label: "submit" },
+									{ key: "esc", label: "actions" },
+								]
+							: [
+									{ key: "↑↓", label: "action" },
+									{ key: "enter", label: "summary" },
+									{ key: "esc", label: "cancel" },
+								]
+					}
+				/>
+			</PaddedRow>
+		</ModalFrame>
 	)
 }
 
@@ -872,11 +979,21 @@ export const CommentThreadModal = ({
 			headerRight={{ text: countText }}
 			subtitle={<PlainLine text={fitCell(anchorLabel, contentWidth)} fg={colors.muted} />}
 			bodyPadding={1}
-			footer={<HintRow items={[{ key: "↑↓", label: "scroll" }, { key: "enter", label: "comment" }, { key: "esc", label: "close" }]} />}
+			footer={
+				<HintRow
+					items={[
+						{ key: "↑↓", label: "scroll" },
+						{ key: "enter", label: "comment" },
+						{ key: "esc", label: "close" },
+					]}
+				/>
+			}
 		>
 			{visibleRows.length === 0 ? (
 				<PlainLine text={fitCell("No comments on this line.", contentWidth)} fg={colors.muted} />
-			) : visibleRows.map((row) => <CommentSegmentsLine key={row.key} segments={row.segments} />)}
+			) : (
+				visibleRows.map((row) => <CommentSegmentsLine key={row.key} segments={row.segments} />)
+			)}
 		</StandardModal>
 	)
 }
@@ -901,10 +1018,7 @@ export const ThemeModal = ({
 	const activeIndex = filteredThemes.findIndex((theme) => theme.id === activeThemeId)
 	const selectedIndex = Math.max(0, activeIndex)
 	const selectedTheme = filteredThemes[selectedIndex] ?? themeDefinitions.find((theme) => theme.id === activeThemeId) ?? themeDefinitions[0]!
-	const scrollStart = Math.min(
-		Math.max(0, filteredThemes.length - maxVisible),
-		Math.max(0, selectedIndex - maxVisible + 1),
-	)
+	const scrollStart = Math.min(Math.max(0, filteredThemes.length - maxVisible), Math.max(0, selectedIndex - maxVisible + 1))
 	const visibleThemes = filteredThemes.slice(scrollStart, scrollStart + maxVisible)
 	const countText = `${filteredThemes.length === 0 ? 0 : selectedIndex + 1}/${filteredThemes.length}`
 	const subtitleText = state.filterMode ? (state.query.length > 0 ? state.query : "type to filter themes") : selectedTheme.description
@@ -921,15 +1035,26 @@ export const ThemeModal = ({
 			height={modalHeight}
 			title="Themes"
 			headerRight={{ text: countText }}
-			subtitle={state.filterMode ? (
-				<TextLine>
-					<span fg={colors.count}>{queryPrefix}</span>
-					<span fg={state.query.length > 0 ? colors.text : colors.muted}>{fitCell(subtitleText, subtitleWidth)}</span>
-				</TextLine>
-			) : (
-				<PlainLine text={fitCell(subtitleText, subtitleWidth)} fg={colors.muted} />
-			)}
-			footer={<HintRow items={[{ key: "↑↓", label: "preview" }, { key: "/", label: "filter" }, { key: "enter", label: "select" }, { key: "esc", label: "cancel" }]} />}
+			subtitle={
+				state.filterMode ? (
+					<TextLine>
+						<span fg={colors.count}>{queryPrefix}</span>
+						<span fg={state.query.length > 0 ? colors.text : colors.muted}>{fitCell(subtitleText, subtitleWidth)}</span>
+					</TextLine>
+				) : (
+					<PlainLine text={fitCell(subtitleText, subtitleWidth)} fg={colors.muted} />
+				)
+			}
+			footer={
+				<HintRow
+					items={[
+						{ key: "↑↓", label: "preview" },
+						{ key: "/", label: "filter" },
+						{ key: "enter", label: "select" },
+						{ key: "esc", label: "cancel" },
+					]}
+				/>
+			}
 		>
 			{visibleThemes.length === 0 ? (
 				<>
@@ -937,28 +1062,30 @@ export const ThemeModal = ({
 					<PlainLine text={centerCell("No matching themes", rowWidth)} fg={colors.muted} />
 					<Filler rows={messageBottomRows} prefix="bottom" />
 				</>
-			) : visibleThemes.map((theme, index) => {
-				const actualIndex = scrollStart + index
-				const isSelected = actualIndex === selectedIndex
-				const isActive = theme.id === activeThemeId
-				const marker = isActive ? "✓" : " "
-				const swatchWidth = 6
-				const nameWidth = Math.max(1, rowWidth - swatchWidth - 3)
+			) : (
+				visibleThemes.map((theme, index) => {
+					const actualIndex = scrollStart + index
+					const isSelected = actualIndex === selectedIndex
+					const isActive = theme.id === activeThemeId
+					const marker = isActive ? "✓" : " "
+					const swatchWidth = 6
+					const nameWidth = Math.max(1, rowWidth - swatchWidth - 3)
 
-				return (
-					<TextLine key={theme.id} bg={isSelected ? colors.selectedBg : undefined} fg={isSelected ? colors.selectedText : colors.text}>
-						<span fg={isActive ? colors.status.passing : colors.muted}>{marker}</span>
-						<span> </span>
-						<span>{fitCell(theme.name, nameWidth)}</span>
-						<span bg={theme.colors.background}> </span>
-						<span bg={theme.colors.modalBackground}> </span>
-						<span bg={theme.colors.accent}> </span>
-						<span bg={theme.colors.status.passing}> </span>
-						<span bg={theme.colors.status.failing}> </span>
-						<span bg={theme.colors.status.review}> </span>
-					</TextLine>
-				)
-			})}
+					return (
+						<TextLine key={theme.id} bg={isSelected ? colors.selectedBg : undefined} fg={isSelected ? colors.selectedText : colors.text}>
+							<span fg={isActive ? colors.status.passing : colors.muted}>{marker}</span>
+							<span> </span>
+							<span>{fitCell(theme.name, nameWidth)}</span>
+							<span bg={theme.colors.background}> </span>
+							<span bg={theme.colors.modalBackground}> </span>
+							<span bg={theme.colors.accent}> </span>
+							<span bg={theme.colors.status.passing}> </span>
+							<span bg={theme.colors.status.failing}> </span>
+							<span bg={theme.colors.status.review}> </span>
+						</TextLine>
+					)
+				})
+			)}
 		</StandardModal>
 	)
 }

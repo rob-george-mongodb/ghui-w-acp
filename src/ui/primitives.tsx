@@ -7,7 +7,7 @@ export const fitCell = (text: string, width: number, align: "left" | "right" = "
 	return align === "right" ? trimmed.padStart(width, " ") : trimmed.padEnd(width, " ")
 }
 
-export const trimCell = (text: string, width: number) => text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text
+export const trimCell = (text: string, width: number) => (text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text)
 
 export const centerCell = (text: string, width: number) => {
 	const trimmed = text.length > width ? `${text.slice(0, Math.max(0, width - 1))}…` : text
@@ -43,7 +43,19 @@ export const TextLine = ({ children, fg = colors.text, bg, width }: { children: 
 	</box>
 )
 
-export const MatchedCell = ({ text, width, query, align = "left", matchIndexes }: { text: string; width: number; query: string; align?: "left" | "right"; matchIndexes?: readonly number[] }) => {
+export const MatchedCell = ({
+	text,
+	width,
+	query,
+	align = "left",
+	matchIndexes,
+}: {
+	text: string
+	width: number
+	query: string
+	align?: "left" | "right"
+	matchIndexes?: readonly number[]
+}) => {
 	const fitted = fitCell(text, width, align)
 	if (matchIndexes && matchIndexes.length > 0) {
 		const highlighted = new Set(matchIndexes.filter((index) => index >= 0 && index < fitted.length))
@@ -58,9 +70,15 @@ export const MatchedCell = ({ text, width, query, align = "left", matchIndexes }
 			}
 			return (
 				<>
-					{segments.map((segment, index) => segment.highlight
-						? <span key={index} fg={colors.accent} attributes={TextAttributes.BOLD}>{segment.text}</span>
-						: <span key={index}>{segment.text}</span>)}
+					{segments.map((segment, index) =>
+						segment.highlight ? (
+							<span key={index} fg={colors.accent} attributes={TextAttributes.BOLD}>
+								{segment.text}
+							</span>
+						) : (
+							<span key={index}>{segment.text}</span>
+						),
+					)}
 				</>
 			)
 		}
@@ -73,7 +91,9 @@ export const MatchedCell = ({ text, width, query, align = "left", matchIndexes }
 	return (
 		<>
 			{index > 0 ? <span>{fitted.slice(0, index)}</span> : null}
-			<span fg={colors.accent} attributes={TextAttributes.BOLD}>{fitted.slice(index, end)}</span>
+			<span fg={colors.accent} attributes={TextAttributes.BOLD}>
+				{fitted.slice(index, end)}
+			</span>
 			{end < fitted.length ? <span>{fitted.slice(end)}</span> : null}
 		</>
 	)
@@ -87,11 +107,18 @@ export const SectionTitle = ({ title }: { title: string }) => (
 	</TextLine>
 )
 
-export const Filler = ({ rows, prefix }: { rows: number; prefix: string }) =>
-	<>{Array.from({ length: rows }, (_, index) => <box key={`${prefix}-${index}`} height={1} />)}</>
+export const Filler = ({ rows, prefix }: { rows: number; prefix: string }) => (
+	<>
+		{Array.from({ length: rows }, (_, index) => (
+			<box key={`${prefix}-${index}`} height={1} />
+		))}
+	</>
+)
 
 export const PaddedRow = ({ children, backgroundColor }: { children: React.ReactNode; backgroundColor?: string }) => (
-	<box height={1} paddingLeft={1} paddingRight={1} {...(backgroundColor ? { backgroundColor } : {})}>{children}</box>
+	<box height={1} paddingLeft={1} paddingRight={1} {...(backgroundColor ? { backgroundColor } : {})}>
+		{children}
+	</box>
 )
 
 export const Divider = ({ width, junctionAt, junctionChar }: { width: number; junctionAt?: number; junctionChar?: string }) => {
@@ -139,7 +166,9 @@ export const HintRow = ({ items }: { items: readonly HintItem[] }) => {
 	return (
 		<TextLine>
 			{visible.flatMap((item, index) => [
-				<span key={`k${index}`} fg={item.keyFg ?? colors.count}>{item.key}</span>,
+				<span key={`k${index}`} fg={item.keyFg ?? colors.count}>
+					{item.key}
+				</span>,
 				<span key={`l${index}`} fg={colors.muted}>{` ${item.label}${index < visible.length - 1 ? "  " : ""}`}</span>,
 			])}
 		</TextLine>
@@ -178,7 +207,9 @@ export const StandardModal = ({
 		<ModalFrame left={left} top={top} width={width} height={height} junctionRows={[2, height - 4]}>
 			<PaddedRow>
 				<TextLine>
-					<span fg={titleFg} attributes={TextAttributes.BOLD}>{title}</span>
+					<span fg={titleFg} attributes={TextAttributes.BOLD}>
+						{title}
+					</span>
 					{headerRight ? (
 						<>
 							<span fg={colors.muted}>{" ".repeat(headerGap)}</span>
@@ -189,7 +220,9 @@ export const StandardModal = ({
 			</PaddedRow>
 			<PaddedRow>{subtitle}</PaddedRow>
 			<Divider width={innerWidth} />
-			<box height={bodyHeight} flexDirection="column" paddingLeft={bodyPadding} paddingRight={bodyPadding}>{children}</box>
+			<box height={bodyHeight} flexDirection="column" paddingLeft={bodyPadding} paddingRight={bodyPadding}>
+				{children}
+			</box>
 			<Divider width={innerWidth} />
 			<PaddedRow>{footer}</PaddedRow>
 		</ModalFrame>
@@ -236,19 +269,25 @@ export const SearchModalHeader = ({
 
 	return (
 		<TextLine>
-			<span fg={colors.accent} attributes={TextAttributes.BOLD}>{titleText}</span>
+			<span fg={colors.accent} attributes={TextAttributes.BOLD}>
+				{titleText}
+			</span>
 			<span>{" ".repeat(headerGap)}</span>
 			<span fg={colors.separator}>{headerDivider}</span>
 			<span>{" ".repeat(searchGap)}</span>
 			{query.length > 0 ? (
 				<>
 					<span fg={colors.text}>{queryText}</span>
-					<span bg={colors.muted} fg={caretFg}> </span>
+					<span bg={colors.muted} fg={caretFg}>
+						{" "}
+					</span>
 					{queryPadding > 0 ? <span>{" ".repeat(queryPadding)}</span> : null}
 				</>
 			) : (
 				<>
-					<span bg={colors.muted} fg={caretFg}>{placeholder[0] ?? " "}</span>
+					<span bg={colors.muted} fg={caretFg}>
+						{placeholder[0] ?? " "}
+					</span>
 					<span fg={colors.muted}>{fitCell(placeholder.slice(1), Math.max(0, searchWidth - 1))}</span>
 				</>
 			)}
@@ -298,7 +337,9 @@ export const SearchModalFrame = ({
 				<SearchModalHeader title={title} query={query} placeholder={placeholder} countText={countText} contentWidth={contentWidth} />
 			</PaddedRow>
 			<Divider width={innerWidth} junctionAt={dividerColumn} junctionChar="┴" />
-			<box height={bodyHeight} flexDirection="column" paddingLeft={bodyPadding} paddingRight={bodyPadding} {...(onBodyMouseScroll ? { onMouseScroll: onBodyMouseScroll } : {})}>{children}</box>
+			<box height={bodyHeight} flexDirection="column" paddingLeft={bodyPadding} paddingRight={bodyPadding} {...(onBodyMouseScroll ? { onMouseScroll: onBodyMouseScroll } : {})}>
+				{children}
+			</box>
 			<Divider width={innerWidth} />
 			<PaddedRow>{footer}</PaddedRow>
 		</ModalFrame>
@@ -328,20 +369,24 @@ export const ModalFrame = ({
 	const innerHeight = Math.max(1, height - 2)
 	const junctions = new Set(junctionRows)
 	const topJunctions = new Set(topJunctionColumns)
-	const topBorder = Array.from({ length: innerWidth }, (_, index) => topJunctions.has(index) ? "┬" : "─").join("")
+	const topBorder = Array.from({ length: innerWidth }, (_, index) => (topJunctions.has(index) ? "┬" : "─")).join("")
 
 	return (
 		<box position="absolute" left={left} top={top} width={width} height={height} flexDirection="column" backgroundColor={backgroundColor}>
 			<PlainLine text={`┌${topBorder}┐`} fg={colors.separator} />
 			<box height={innerHeight} flexDirection="row">
 				<box width={1} height={innerHeight} flexDirection="column">
-					{Array.from({ length: innerHeight }, (_, index) => <PlainLine key={index} text={junctions.has(index) ? "├" : "│"} fg={colors.separator} />)}
+					{Array.from({ length: innerHeight }, (_, index) => (
+						<PlainLine key={index} text={junctions.has(index) ? "├" : "│"} fg={colors.separator} />
+					))}
 				</box>
 				<box width={innerWidth} height={innerHeight} flexDirection="column">
 					{children}
 				</box>
 				<box width={1} height={innerHeight} flexDirection="column">
-					{Array.from({ length: innerHeight }, (_, index) => <PlainLine key={index} text={junctions.has(index) ? "┤" : "│"} fg={colors.separator} />)}
+					{Array.from({ length: innerHeight }, (_, index) => (
+						<PlainLine key={index} text={junctions.has(index) ? "┤" : "│"} fg={colors.separator} />
+					))}
 				</box>
 			</box>
 			<PlainLine text={`└${"─".repeat(innerWidth)}┘`} fg={colors.separator} />

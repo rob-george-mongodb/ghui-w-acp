@@ -22,7 +22,10 @@ const FOCUS_REPORTING_DISABLE = "\x1b[?1004l"
 
 const paletteDetector = createTerminalPalette(process.stdin, process.stdout)
 const [terminalColors, { setSystemThemeColors }, { App }] = await Promise.all([
-	paletteDetector.detect({ timeout: 150 }).catch(() => null).finally(() => paletteDetector.cleanup()),
+	paletteDetector
+		.detect({ timeout: 150 })
+		.catch(() => null)
+		.finally(() => paletteDetector.cleanup()),
 	import("./ui/colors.js"),
 	import("./App.js"),
 ])

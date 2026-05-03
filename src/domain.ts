@@ -90,13 +90,13 @@ export interface PullRequestReviewComment {
 
 export type PullRequestConversationItem =
 	| {
-		readonly _tag: "comment"
-		readonly id: string
-		readonly author: string
-		readonly body: string
-		readonly createdAt: Date | null
-		readonly url: string | null
-	}
+			readonly _tag: "comment"
+			readonly id: string
+			readonly author: string
+			readonly body: string
+			readonly createdAt: Date | null
+			readonly url: string | null
+	  }
 	| ({ readonly _tag: "review-comment" } & PullRequestReviewComment)
 
 export interface PullRequestItem {
