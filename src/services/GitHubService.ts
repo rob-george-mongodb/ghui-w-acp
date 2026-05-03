@@ -164,6 +164,7 @@ const PullRequestCommentSchema = Schema.Struct({
 	line: OptionalNullableNumber,
 	original_line: OptionalNullableNumber,
 	side: Schema.optionalKey(Schema.NullOr(DiffCommentSide)),
+	in_reply_to_id: Schema.optionalKey(Schema.NullOr(Schema.Union([Schema.Number, Schema.String]))),
 })
 
 const PullRequestFileSchema = Schema.Struct({
@@ -473,11 +474,13 @@ const rawCommentFields = (comment: RawPullRequestComment, fallbackId: string) =>
 const parsePullRequestComment = (comment: RawPullRequestComment): PullRequestReviewComment | null => {
 	const line = comment.line ?? comment.original_line
 	if (!comment.path || !line || (comment.side !== "LEFT" && comment.side !== "RIGHT")) return null
+	const inReplyTo = comment.in_reply_to_id != null ? String(comment.in_reply_to_id) : null
 	return {
 		...rawCommentFields(comment, `${comment.path}:${comment.side}:${line}:${comment.created_at ?? ""}:${comment.body ?? ""}`),
 		path: comment.path,
 		line,
 		side: comment.side,
+		inReplyTo,
 	}
 }
 
@@ -539,6 +542,7 @@ const fallbackCreatedComment = (input: CreatePullRequestCommentInput): PullReque
 	body: input.body,
 	createdAt: new Date(),
 	url: null,
+	inReplyTo: null,
 })
 
 export type GitHubError = CommandError | JsonParseError | Schema.SchemaError
@@ -817,9 +821,10 @@ export class GitHubService extends Context.Service<
 						body,
 						createdAt: new Date(),
 						url: null,
+						inReplyTo,
 					}
 				}
-				return reviewCommentAsComment(review)
+				return reviewCommentAsComment({ ...review, inReplyTo: review.inReplyTo ?? inReplyTo })
 			})
 
 			const createPullRequestComment = Effect.fn("GitHubService.createPullRequestComment")(function* (input: CreatePullRequestCommentInput) {

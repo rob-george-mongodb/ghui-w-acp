@@ -11,7 +11,7 @@ import * as AtomRegistry from "effect/unstable/reactivity/AtomRegistry"
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { buildAppCommands } from "./appCommands.js"
 import type { AppCommand } from "./commands.js"
-import { clampCommandIndex, commandEnabled, defineCommand, filterCommands, sortCommandsByScope } from "./commands.js"
+import { clampCommandIndex, type CommandScope, commandEnabled, defineCommand, filterCommands, sortCommandsByActiveScope } from "./commands.js"
 import { config } from "./config.js"
 import {
 	type CreatePullRequestCommentInput,
@@ -1494,16 +1494,27 @@ export const App = () => {
 		setCommentsViewActive(false)
 	}
 
+	// The comments view exposes a virtual "+ Add new comment" row at the end, so
+	// the selectable range is comments.length (inclusive — the placeholder).
+	const commentsRowCount = selectedComments.length + 1
 	const moveCommentsSelection = (delta: number) => {
 		setCommentsViewSelection((current) => {
-			const max = Math.max(0, selectedComments.length - 1)
+			const max = commentsRowCount - 1
 			return Math.max(0, Math.min(max, current + delta))
 		})
 	}
 
 	const setCommentsSelection = (index: number) => {
-		const max = Math.max(0, selectedComments.length - 1)
+		const max = commentsRowCount - 1
 		setCommentsViewSelection(Math.max(0, Math.min(max, index)))
+	}
+
+	const confirmCommentSelection = () => {
+		if (commentsViewSelection >= selectedComments.length) {
+			openNewIssueCommentModal()
+			return
+		}
+		openReplyToSelectedComment()
 	}
 
 	const openSelectedCommentInBrowser = () => {
@@ -1789,6 +1800,7 @@ export const App = () => {
 			body,
 			createdAt: new Date(),
 			url: null,
+			inReplyTo: null,
 		} satisfies PullRequestReviewComment
 		const rangeInput = targetRange && targetRange.start.line !== targetRange.end.line ? { startLine: targetRange.start.line, startSide: targetRange.start.side } : {}
 		const input = {
@@ -1911,6 +1923,7 @@ export const App = () => {
 			body,
 			createdAt: new Date(),
 			url: null,
+			inReplyTo: target.inReplyTo,
 		}
 		setPullRequestComments((current) => ({ ...current, [key]: [...(current[key] ?? []), optimistic] }))
 		closeActiveModal()
@@ -2545,8 +2558,9 @@ export const App = () => {
 				commandPalette.query,
 			)
 		: []
+	const activePaletteScope: CommandScope | null = commentsViewActive ? "Comments" : diffFullView ? "Diff" : detailFullView ? "Pull request" : null
 	const commandPaletteCommands = commandPaletteActive
-		? [...dynamicPaletteCommands, ...(commandPalette.query.trim().length > 0 ? staticPaletteCommands : sortCommandsByScope(staticPaletteCommands))]
+		? [...dynamicPaletteCommands, ...(commandPalette.query.trim().length > 0 ? staticPaletteCommands : sortCommandsByActiveScope(staticPaletteCommands, activePaletteScope))]
 		: []
 	const selectedCommandIndex = clampCommandIndex(commandPalette.selectedIndex, commandPaletteCommands)
 	const selectedCommand = commandPaletteCommands[selectedCommandIndex] ?? null
@@ -2834,12 +2848,12 @@ export const App = () => {
 			halfPage,
 			scrollBy: moveCommentsSelection,
 			scrollTo: setCommentsSelection,
-			visibleCount: selectedComments.length,
+			visibleCount: commentsRowCount,
 			closeCommentsView,
 			openInBrowser: openSelectedCommentInBrowser,
 			refresh: refreshSelectedComments,
 			newComment: () => runCommandById("comments.new"),
-			replyToSelected: () => runCommandById("comments.reply"),
+			confirmSelection: confirmCommentSelection,
 		},
 		listNav: {
 			halfPage,

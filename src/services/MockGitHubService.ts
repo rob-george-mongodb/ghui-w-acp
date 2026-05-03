@@ -153,6 +153,19 @@ export const MockGitHubService = {
 				path: "src/App.tsx",
 				line: 42,
 				side: "RIGHT",
+				inReplyTo: null,
+			},
+			{
+				_tag: "review-comment",
+				id: `mock-review:${repository}:${number}:2`,
+				author: "another-reviewer",
+				body: "Threaded reply on the same line — should render indented.",
+				createdAt: new Date(Date.now() - 1_200_000),
+				url: null,
+				path: "src/App.tsx",
+				line: 42,
+				side: "RIGHT",
+				inReplyTo: `mock-review:${repository}:${number}:1`,
 			},
 		]
 
@@ -192,6 +205,7 @@ export const MockGitHubService = {
 						body: input.body,
 						createdAt: new Date(),
 						url: null,
+						inReplyTo: null,
 					} satisfies PullRequestReviewComment),
 				createPullRequestIssueComment: (_repo, _number, body) =>
 					Effect.succeed({
@@ -213,6 +227,7 @@ export const MockGitHubService = {
 						body,
 						createdAt: new Date(),
 						url: null,
+						inReplyTo,
 					}),
 				submitPullRequestReview: () => Effect.void,
 				toggleDraftStatus: () => Effect.void,

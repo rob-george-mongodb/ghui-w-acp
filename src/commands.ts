@@ -4,6 +4,18 @@ const SCOPE_ORDER: readonly CommandScope[] = ["Global", "View", "Pull request", 
 
 export const sortCommandsByScope = (commands: readonly AppCommand[]) => [...commands].sort((left, right) => SCOPE_ORDER.indexOf(left.scope) - SCOPE_ORDER.indexOf(right.scope))
 
+// When the palette opens with no query, surface commands relevant to the
+// current screen first (e.g. Comments scope while the comments view is open).
+export const sortCommandsByActiveScope = (commands: readonly AppCommand[], activeScope: CommandScope | null) =>
+	[...commands].sort((left, right) => {
+		if (activeScope) {
+			const leftActive = left.scope === activeScope ? 0 : 1
+			const rightActive = right.scope === activeScope ? 0 : 1
+			if (leftActive !== rightActive) return leftActive - rightActive
+		}
+		return SCOPE_ORDER.indexOf(left.scope) - SCOPE_ORDER.indexOf(right.scope)
+	})
+
 export interface AppCommand {
 	readonly id: string
 	readonly title: string

@@ -109,6 +109,7 @@ export interface PullRequestReviewComment {
 	readonly body: string
 	readonly createdAt: Date | null
 	readonly url: string | null
+	readonly inReplyTo: string | null
 }
 
 export type PullRequestComment =
