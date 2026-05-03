@@ -3,7 +3,7 @@ import { Data } from "effect"
 import type { PullRequestLabel, PullRequestMergeInfo, PullRequestReviewComment, PullRequestReviewEvent } from "../domain.js"
 import { availableMergeActions } from "../mergeActions.js"
 import { clampCursor, commentEditorLines, cursorLineIndexForLines } from "./commentEditor.js"
-import { colors, filterThemeDefinitions, themeDefinitions, type ThemeId } from "./colors.js"
+import { colors, filterThemeDefinitions, oppositeThemeTone, themeDefinitions, type ThemeId, type ThemeTone } from "./colors.js"
 import { commentDisplayRows, CommentSegmentsLine, type CommentDisplayLine } from "./comments.js"
 import { diffFileStats, diffFileStatsText, type DiffFilePatch } from "./diff.js"
 import {
@@ -80,6 +80,7 @@ export interface SubmitReviewModalState {
 export interface ThemeModalState {
 	readonly query: string
 	readonly filterMode: boolean
+	readonly tone: ThemeTone
 	readonly initialThemeId: ThemeId
 }
 
@@ -335,6 +336,7 @@ export const initialSubmitReviewModalState: SubmitReviewModalState = {
 export const initialThemeModalState: ThemeModalState = {
 	query: "",
 	filterMode: false,
+	tone: "dark",
 	initialThemeId: "ghui",
 }
 
@@ -1014,7 +1016,7 @@ export const ThemeModal = ({
 	offsetTop: number
 }) => {
 	const { contentWidth, bodyHeight: maxVisible, rowWidth } = standardModalDims(modalWidth, modalHeight)
-	const filteredThemes = filterThemeDefinitions(state.query)
+	const filteredThemes = filterThemeDefinitions(state.query, state.tone)
 	const activeIndex = filteredThemes.findIndex((theme) => theme.id === activeThemeId)
 	const selectedIndex = Math.max(0, activeIndex)
 	const selectedTheme = filteredThemes[selectedIndex] ?? themeDefinitions.find((theme) => theme.id === activeThemeId) ?? themeDefinitions[0]!
@@ -1026,6 +1028,8 @@ export const ThemeModal = ({
 	const subtitleWidth = Math.max(1, contentWidth - (state.filterMode ? queryPrefix.length : 0))
 	const messageTopRows = Math.max(0, Math.floor((maxVisible - 1) / 2))
 	const messageBottomRows = Math.max(0, maxVisible - messageTopRows - 1)
+	const toneLabel = state.tone === "dark" ? "Dark" : "Light"
+	const nextToneLabel = oppositeThemeTone(state.tone)
 
 	return (
 		<StandardModal
@@ -1033,7 +1037,7 @@ export const ThemeModal = ({
 			top={offsetTop}
 			width={modalWidth}
 			height={modalHeight}
-			title="Themes"
+			title={`${toneLabel} Themes`}
 			headerRight={{ text: countText }}
 			subtitle={
 				state.filterMode ? (
@@ -1049,6 +1053,7 @@ export const ThemeModal = ({
 				<HintRow
 					items={[
 						{ key: "↑↓", label: "preview" },
+						{ key: "tab", label: `show ${nextToneLabel}` },
 						{ key: "/", label: "filter" },
 						{ key: "enter", label: "select" },
 						{ key: "esc", label: "cancel" },

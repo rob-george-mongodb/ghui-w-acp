@@ -2,4 +2,4 @@
 "@kitlangton/ghui": minor
 ---
 
-Add light theme variants: Solarized Light, Catppuccin Latte, Rose Pine Dawn, Gruvbox Light, and One Light.
+Add light theme variants behind a theme picker tab toggle, so dark and light themes preview separately.

@@ -47,7 +47,7 @@ import { Clipboard } from "./services/Clipboard.js"
 import { CommandRunner } from "./services/CommandRunner.js"
 import { GitHubService } from "./services/GitHubService.js"
 import { loadStoredDiffWhitespaceMode, loadStoredThemeId, saveStoredDiffWhitespaceMode, saveStoredThemeId } from "./themeStore.js"
-import { colors, filterThemeDefinitions, mixHex, setActiveTheme, themeDefinitions, type ThemeId } from "./ui/colors.js"
+import { colors, filterThemeDefinitions, mixHex, pairedThemeId, setActiveTheme, themeDefinitions, themeToneForThemeId, type ThemeId, type ThemeTone } from "./ui/colors.js"
 import {
 	backspace as editorBackspace,
 	deleteForward as editorDeleteForward,
@@ -1863,6 +1863,7 @@ export const App = () => {
 		setThemeModal({
 			query: "",
 			filterMode: false,
+			tone: themeToneForThemeId(themeId),
 			initialThemeId: themeId,
 		})
 	}
@@ -1891,7 +1892,7 @@ export const App = () => {
 	}
 
 	const moveThemeSelection = (delta: number) => {
-		const filteredThemes = filterThemeDefinitions(themeModalRef.current.query)
+		const filteredThemes = filterThemeDefinitions(themeModalRef.current.query, themeModalRef.current.tone)
 		if (filteredThemes.length === 0) return
 		const currentIndex = Math.max(
 			0,
@@ -1916,9 +1917,20 @@ export const App = () => {
 		setThemeModal(next)
 
 		if (options.previewFirst && query.trim().length > 0) {
-			const firstTheme = filterThemeDefinitions(query)[0]
+			const firstTheme = filterThemeDefinitions(query, next.tone)[0]
 			if (firstTheme) previewTheme(firstTheme.id)
 		}
+	}
+
+	const toggleThemeTone = () => {
+		const current = themeModalRef.current
+		const tone: ThemeTone = current.tone === "dark" ? "light" : "dark"
+		const next = { ...current, query: "", filterMode: false, tone }
+		themeModalRef.current = next
+		setThemeModal(next)
+
+		const nextThemeId = pairedThemeId(themeIdRef.current, tone) ?? filterThemeDefinitions("", tone)[0]?.id
+		if (nextThemeId) previewTheme(nextThemeId)
 	}
 
 	const editThemeQuery = (transform: (query: string) => string) => {
@@ -2421,10 +2433,11 @@ export const App = () => {
 		},
 		themeModal: {
 			filterMode: themeModal.filterMode,
-			hasFilteredResults: filterThemeDefinitions(themeModal.query).length > 0,
+			hasFilteredResults: filterThemeDefinitions(themeModal.query, themeModal.tone).length > 0,
 			closeWithoutSaving: () => closeThemeModal(false),
 			clearFilter: () => updateThemeQuery("", { filterMode: false }),
 			enterFilterMode: () => updateThemeQuery("", { filterMode: true }),
+			toggleTone: toggleThemeTone,
 			confirmSelection: () => closeThemeModal(true),
 			moveSelection: moveThemeSelection,
 		},
