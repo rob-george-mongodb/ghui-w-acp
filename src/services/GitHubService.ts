@@ -572,6 +572,8 @@ export class GitHubService extends Context.Service<
 		readonly mergePullRequest: (repository: string, number: number, action: PullRequestMergeAction) => Effect.Effect<void, CommandError>
 		readonly closePullRequest: (repository: string, number: number) => Effect.Effect<void, CommandError>
 		readonly createPullRequestComment: (input: CreatePullRequestCommentInput) => Effect.Effect<PullRequestReviewComment, GitHubError>
+		readonly createPullRequestIssueComment: (repository: string, number: number, body: string) => Effect.Effect<PullRequestComment, GitHubError>
+		readonly replyToReviewComment: (repository: string, number: number, inReplyTo: string, body: string) => Effect.Effect<PullRequestComment, GitHubError>
 		readonly submitPullRequestReview: (input: SubmitPullRequestReviewInput) => Effect.Effect<void, CommandError>
 		readonly toggleDraftStatus: (repository: string, number: number, isDraft: boolean) => Effect.Effect<void, CommandError>
 		readonly listRepoLabels: (repository: string) => Effect.Effect<readonly { readonly name: string; readonly color: string | null }[], GitHubError>
@@ -782,6 +784,44 @@ export class GitHubService extends Context.Service<
 
 			const closePullRequest = (repository: string, number: number) => ghVoid("closePullRequest", ["pr", "close", String(number), "--repo", repository])
 
+			const createPullRequestIssueComment = Effect.fn("GitHubService.createPullRequestIssueComment")(function* (repository: string, number: number, body: string) {
+				const response = yield* command.runSchema(PullRequestCommentSchema, "gh", [
+					"api",
+					"--method",
+					"POST",
+					`repos/${repository}/issues/${number}/comments`,
+					"-f",
+					`body=${body}`,
+				])
+				return parseIssueComment(response)
+			})
+
+			const replyToReviewComment = Effect.fn("GitHubService.replyToReviewComment")(function* (repository: string, number: number, inReplyTo: string, body: string) {
+				const response = yield* command.runSchema(PullRequestCommentSchema, "gh", [
+					"api",
+					"--method",
+					"POST",
+					`repos/${repository}/pulls/${number}/comments/${inReplyTo}/replies`,
+					"-f",
+					`body=${body}`,
+				])
+				const review = parsePullRequestComment(response)
+				if (!review) {
+					return {
+						_tag: "review-comment" as const,
+						id: `reply:${inReplyTo}:${Date.now()}`,
+						path: "",
+						line: 0,
+						side: "RIGHT" as const,
+						author: "you",
+						body,
+						createdAt: new Date(),
+						url: null,
+					}
+				}
+				return reviewCommentAsComment(review)
+			})
+
 			const createPullRequestComment = Effect.fn("GitHubService.createPullRequestComment")(function* (input: CreatePullRequestCommentInput) {
 				const response = yield* command.runSchema(PullRequestCommentSchema, "gh", [
 					"api",
@@ -834,6 +874,8 @@ export class GitHubService extends Context.Service<
 				mergePullRequest,
 				closePullRequest,
 				createPullRequestComment,
+				createPullRequestIssueComment,
+				replyToReviewComment,
 				submitPullRequestReview,
 				toggleDraftStatus,
 				listRepoLabels,

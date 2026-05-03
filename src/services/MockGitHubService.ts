@@ -193,6 +193,27 @@ export const MockGitHubService = {
 						createdAt: new Date(),
 						url: null,
 					} satisfies PullRequestReviewComment),
+				createPullRequestIssueComment: (_repo, _number, body) =>
+					Effect.succeed({
+						_tag: "comment" as const,
+						id: `mock-issue:${Date.now()}`,
+						author: username,
+						body,
+						createdAt: new Date(),
+						url: null,
+					}),
+				replyToReviewComment: (_repo, _number, inReplyTo, body) =>
+					Effect.succeed({
+						_tag: "review-comment" as const,
+						id: `mock-reply:${inReplyTo}:${Date.now()}`,
+						path: "src/App.tsx",
+						line: 42,
+						side: "RIGHT" as const,
+						author: username,
+						body,
+						createdAt: new Date(),
+						url: null,
+					}),
 				submitPullRequestReview: () => Effect.void,
 				toggleDraftStatus: () => Effect.void,
 				listRepoLabels: () => Effect.succeed([]),

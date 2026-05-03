@@ -76,10 +76,13 @@ export interface PullRequestStateModalState {
 	readonly error: string | null
 }
 
+export type CommentModalTarget = { readonly kind: "diff" } | { readonly kind: "issue" } | { readonly kind: "reply"; readonly inReplyTo: string; readonly anchorLabel: string }
+
 export interface CommentModalState {
 	readonly body: string
 	readonly cursor: number
 	readonly error: string | null
+	readonly target: CommentModalTarget
 }
 
 export interface CommentThreadModalState {
@@ -350,6 +353,7 @@ export const initialCommentModalState: CommentModalState = {
 	body: "",
 	cursor: 0,
 	error: null,
+	target: { kind: "diff" },
 }
 
 export const initialCommentThreadModalState: CommentThreadModalState = {

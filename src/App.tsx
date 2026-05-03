@@ -462,6 +462,12 @@ const closePullRequestAtom = githubRuntime.fn<{ readonly repository: string; rea
 	GitHubService.use((github) => github.closePullRequest(input.repository, input.number)),
 )
 const createPullRequestCommentAtom = githubRuntime.fn<CreatePullRequestCommentInput>()((input) => GitHubService.use((github) => github.createPullRequestComment(input)))
+const createPullRequestIssueCommentAtom = githubRuntime.fn<{ readonly repository: string; readonly number: number; readonly body: string }>()((input) =>
+	GitHubService.use((github) => github.createPullRequestIssueComment(input.repository, input.number, input.body)),
+)
+const replyToReviewCommentAtom = githubRuntime.fn<{ readonly repository: string; readonly number: number; readonly inReplyTo: string; readonly body: string }>()((input) =>
+	GitHubService.use((github) => github.replyToReviewComment(input.repository, input.number, input.inReplyTo, input.body)),
+)
 const submitPullRequestReviewAtom = githubRuntime.fn<SubmitPullRequestReviewInput>()((input) => GitHubService.use((github) => github.submitPullRequestReview(input)))
 const copyToClipboardAtom = githubRuntime.fn<string>()((text) => Clipboard.use((clipboard) => clipboard.copy(text)))
 const openInBrowserAtom = githubRuntime.fn<PullRequestItem>()((pullRequest) => BrowserOpener.use((browser) => browser.openPullRequest(pullRequest)))
@@ -730,6 +736,8 @@ export const App = () => {
 	const mergePullRequest = useAtomSet(mergePullRequestAtom, { mode: "promise" })
 	const closePullRequest = useAtomSet(closePullRequestAtom, { mode: "promise" })
 	const createPullRequestComment = useAtomSet(createPullRequestCommentAtom, { mode: "promise" })
+	const createPullRequestIssueComment = useAtomSet(createPullRequestIssueCommentAtom, { mode: "promise" })
+	const replyToReviewComment = useAtomSet(replyToReviewCommentAtom, { mode: "promise" })
 	const submitPullRequestReview = useAtomSet(submitPullRequestReviewAtom, { mode: "promise" })
 	const copyToClipboard = useAtomSet(copyToClipboardAtom, { mode: "promise" })
 	const openInBrowser = useAtomSet(openInBrowserAtom, { mode: "promise" })
@@ -1827,6 +1835,111 @@ export const App = () => {
 			})
 	}
 
+	const openNewIssueCommentModal = () => {
+		if (!selectedPullRequest) return
+		setCommentModal({ ...initialCommentModalState, target: { kind: "issue" } })
+	}
+
+	const openReplyToSelectedComment = () => {
+		if (!selectedPullRequest) return
+		const comment = selectedComments[commentsViewSelection]
+		if (!comment) {
+			flashNotice("No comment selected")
+			return
+		}
+		if (comment._tag !== "review-comment") {
+			setCommentModal({ ...initialCommentModalState, target: { kind: "issue" } })
+			flashNotice("Top-level comments don't thread; new top-level comment instead.")
+			return
+		}
+		const anchor = `${comment.path}:${comment.line}`
+		setCommentModal({ ...initialCommentModalState, target: { kind: "reply", inReplyTo: comment.id, anchorLabel: anchor } })
+	}
+
+	const submitIssueComment = () => {
+		if (!selectedPullRequest) return
+		const body = commentModal.body.trim()
+		if (body.length === 0) {
+			setCommentModal((current) => ({ ...current, error: "Write a comment before saving." }))
+			return
+		}
+		const { repository, number } = selectedPullRequest
+		const key = pullRequestDiffKey(selectedPullRequest)
+		const optimistic: PullRequestComment = {
+			_tag: "comment",
+			id: `local:issue:${Date.now()}`,
+			author: username ?? "you",
+			body,
+			createdAt: new Date(),
+			url: null,
+		}
+		setPullRequestComments((current) => ({ ...current, [key]: [...(current[key] ?? []), optimistic] }))
+		closeActiveModal()
+		flashNotice(`Posting comment on #${number}`)
+		void createPullRequestIssueComment({ repository, number, body })
+			.then((created) => {
+				setPullRequestComments((current) => ({ ...current, [key]: (current[key] ?? []).map((entry) => (entry.id === optimistic.id ? created : entry)) }))
+				flashNotice(`Commented on #${number}`)
+			})
+			.catch((error) => {
+				setPullRequestComments((current) => ({ ...current, [key]: (current[key] ?? []).filter((entry) => entry.id !== optimistic.id) }))
+				flashNotice(errorMessage(error))
+			})
+	}
+
+	const submitReplyComment = () => {
+		if (!selectedPullRequest || commentModal.target.kind !== "reply") return
+		const body = commentModal.body.trim()
+		if (body.length === 0) {
+			setCommentModal((current) => ({ ...current, error: "Write a comment before saving." }))
+			return
+		}
+		const { repository, number } = selectedPullRequest
+		const target = commentModal.target
+		const key = pullRequestDiffKey(selectedPullRequest)
+		const parent = selectedComments.find((entry) => entry._tag === "review-comment" && entry.id === target.inReplyTo)
+		const path = parent?._tag === "review-comment" ? parent.path : ""
+		const line = parent?._tag === "review-comment" ? parent.line : 0
+		const side = parent?._tag === "review-comment" ? parent.side : "RIGHT"
+		const optimistic: PullRequestComment = {
+			_tag: "review-comment",
+			id: `local:reply:${Date.now()}`,
+			path,
+			line,
+			side,
+			author: username ?? "you",
+			body,
+			createdAt: new Date(),
+			url: null,
+		}
+		setPullRequestComments((current) => ({ ...current, [key]: [...(current[key] ?? []), optimistic] }))
+		closeActiveModal()
+		flashNotice(`Replying on ${target.anchorLabel}`)
+		void replyToReviewComment({ repository, number, inReplyTo: target.inReplyTo, body })
+			.then((created) => {
+				setPullRequestComments((current) => ({ ...current, [key]: (current[key] ?? []).map((entry) => (entry.id === optimistic.id ? created : entry)) }))
+				flashNotice(`Replied on ${target.anchorLabel}`)
+			})
+			.catch((error) => {
+				setPullRequestComments((current) => ({ ...current, [key]: (current[key] ?? []).filter((entry) => entry.id !== optimistic.id) }))
+				flashNotice(errorMessage(error))
+			})
+	}
+
+	const submitCommentModal = () => {
+		switch (commentModal.target.kind) {
+			case "diff":
+				submitDiffComment()
+				return
+			case "issue":
+				submitIssueComment()
+				return
+			case "reply":
+				submitReplyComment()
+				return
+		}
+	}
+
 	const confirmSubmitReview = () => {
 		if (!submitReviewModal.repository || submitReviewModal.number === null || submitReviewModal.running) return
 		const option = submitReviewOptions[submitReviewModal.selectedIndex]
@@ -2367,6 +2480,8 @@ export const App = () => {
 			},
 			openCommentsView,
 			closeCommentsView,
+			openNewIssueCommentModal,
+			openReplyToSelectedComment,
 			reloadDiff: () => {
 				if (!selectedPullRequest) return
 				loadPullRequestDiff(selectedPullRequest, { force: true, includeComments: true })
@@ -2642,7 +2757,7 @@ export const App = () => {
 		},
 		commentModal: {
 			closeModal: closeActiveModal,
-			submit: submitDiffComment,
+			submit: submitCommentModal,
 			insertNewline: () => editComment((state) => insertText(state, "\n")),
 			moveLeft: () => editComment(editorMoveLeft),
 			moveRight: () => editComment(editorMoveRight),
@@ -2717,14 +2832,14 @@ export const App = () => {
 		},
 		commentsView: {
 			halfPage,
-			scrollBy: () => moveCommentsSelection(0),
+			scrollBy: moveCommentsSelection,
 			scrollTo: setCommentsSelection,
 			visibleCount: selectedComments.length,
 			closeCommentsView,
-			moveSelection: moveCommentsSelection,
-			setSelected: setCommentsSelection,
 			openInBrowser: openSelectedCommentInBrowser,
 			refresh: refreshSelectedComments,
+			newComment: () => runCommandById("comments.new"),
+			replyToSelected: () => runCommandById("comments.reply"),
 		},
 		listNav: {
 			halfPage,
@@ -2936,7 +3051,13 @@ export const App = () => {
 	const submitReviewModalHeight = submitReviewLayout.height
 	const submitReviewModalLeft = submitReviewLayout.left
 	const submitReviewModalTop = submitReviewLayout.top
-	const commentAnchorLabel = selectedDiffCommentAnchor && selectedDiffCommentLabel ? `${selectedDiffCommentAnchor.path} ${selectedDiffCommentLabel}` : "No diff line selected"
+	const commentAnchorLabel = ((): string => {
+		if (commentModalActive) {
+			if (commentModal.target.kind === "issue") return selectedPullRequest ? `New comment on #${selectedPullRequest.number}` : "New comment"
+			if (commentModal.target.kind === "reply") return `Reply on ${commentModal.target.anchorLabel}`
+		}
+		return selectedDiffCommentAnchor && selectedDiffCommentLabel ? `${selectedDiffCommentAnchor.path} ${selectedDiffCommentLabel}` : "No diff line selected"
+	})()
 	const mergeLayout = sizedModal(46, 68, 14, 20)
 	const mergeModalWidth = mergeLayout.width
 	const mergeModalHeight = mergeLayout.height
