@@ -1,5 +1,14 @@
 # @kitlangton/ghui
 
+## 0.3.0
+
+### Minor Changes
+
+- 62dd2a2: Add diff review shortcuts for navigating changed files and submitting pull request reviews.
+- Add path-aware fuzzy search and Neovim-style `ctrl+n`/`ctrl+p` navigation to the changed-files navigator.
+- Remove `GHUI_AUTHOR` and `GHUI_REPO`; ghui now uses GitHub's `@me` search qualifiers and repositories can be opened from inside the app.
+- Derive diff line-number text color from the gutter surface instead of reusing the global muted gray.
+
 ## 0.2.1
 
 ### Patch Changes
