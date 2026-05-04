@@ -1,5 +1,12 @@
 # @kitlangton/ghui
 
+## 0.5.0
+
+### Minor Changes
+
+- Redesign the pull request details pane: comment threads no longer inline in the body, replaced by a compact `Comments  N · press c to view all` row in the header. Press `c` to open the dedicated comments view. The Markdown preview now also renders bold (`**strong**`) and basic pipe tables, with bold inline code properly nested.
+- 24477aa: Add a persistent SQLite cache for pull request queues and hydrated details so launches can show stale data immediately while refreshing from GitHub. The cache lives at `${XDG_CACHE_HOME:-~/.cache}/ghui/cache.sqlite` by default, can be redirected with `GHUI_CACHE_PATH`, and disabled entirely with `GHUI_CACHE_PATH=off`. Cache writes are best-effort (failures never block GitHub reads/writes) and old entries are pruned both after successful queue refreshes and at startup so the database stays bounded for read-only sessions.
+
 ## 0.4.7
 
 ### Patch Changes
