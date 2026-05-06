@@ -51,7 +51,9 @@ import { CacheService, type PullRequestCacheKey } from "./services/CacheService.
 import { Clipboard } from "./services/Clipboard.js"
 import { CommandRunner } from "./services/CommandRunner.js"
 import { GitHubService } from "./services/GitHubService.js"
-import { loadStoredDiffWhitespaceMode, loadStoredThemeId, saveStoredDiffWhitespaceMode, saveStoredThemeId } from "./themeStore.js"
+import { detectSystemAppearance } from "./systemAppearance.js"
+import { fixedThemeConfig, resolveThemeId, systemThemeConfigForTheme, themeConfigWithSelection, type ThemeConfig, type ThemeMode } from "./themeConfig.js"
+import { loadStoredDiffWhitespaceMode, loadStoredThemeConfig, saveStoredDiffWhitespaceMode, saveStoredThemeConfig } from "./themeStore.js"
 import { colors, filterThemeDefinitions, mixHex, pairedThemeId, setActiveTheme, themeDefinitions, themeToneForThemeId, type ThemeId, type ThemeTone } from "./ui/colors.js"
 import {
 	backspace as editorBackspace,
@@ -185,7 +187,12 @@ const githubRuntime = Atom.runtime(
 		Layer.provideMerge(Observability.layer),
 	),
 )
-const [initialThemeId, initialDiffWhitespaceMode] = await Promise.all([Effect.runPromise(loadStoredThemeId), Effect.runPromise(loadStoredDiffWhitespaceMode)])
+const [initialThemeConfig, initialDiffWhitespaceMode, initialSystemAppearance] = await Promise.all([
+	Effect.runPromise(loadStoredThemeConfig),
+	Effect.runPromise(loadStoredDiffWhitespaceMode),
+	detectSystemAppearance(),
+])
+const initialThemeId = resolveThemeId(initialThemeConfig, initialSystemAppearance)
 setActiveTheme(initialThemeId)
 
 interface DetailPlaceholderInput {
@@ -350,6 +357,8 @@ const pullRequestCommentsLoadedAtom = Atom.make<Record<string, "loading" | "read
 const pullRequestDiffCacheAtom = Atom.make<Record<string, PullRequestDiffState>>({}).pipe(Atom.keepAlive)
 
 const activeModalAtom = Atom.make<Modal>(initialModal)
+const themeConfigAtom = Atom.make<ThemeConfig>(initialThemeConfig).pipe(Atom.keepAlive)
+const systemAppearanceAtom = Atom.make<ThemeTone>(initialSystemAppearance).pipe(Atom.keepAlive)
 const themeIdAtom = Atom.make<ThemeId>(initialThemeId).pipe(Atom.keepAlive)
 const labelCacheAtom = Atom.make<Record<string, readonly PullRequestLabel[]>>({}).pipe(Atom.keepAlive)
 const repoMergeMethodsCacheAtom = Atom.make<Record<string, RepositoryMergeMethods>>({}).pipe(Atom.keepAlive)
@@ -715,6 +724,8 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	const setPullRequestCommentsLoaded = useAtomSet(pullRequestCommentsLoadedAtom)
 	const setPullRequestDiffCache = useAtomSet(pullRequestDiffCacheAtom)
 	const [activeModal, setActiveModal] = useAtom(activeModalAtom)
+	const [themeConfig, setThemeConfig] = useAtom(themeConfigAtom)
+	const [systemAppearance, setSystemAppearance] = useAtom(systemAppearanceAtom)
 	const [themeId, setThemeId] = useAtom(themeIdAtom)
 	const closeActiveModal = () => setActiveModal(initialModal)
 	const labelModalActive = Modal.$is("Label")(activeModal)
@@ -766,8 +777,12 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	const setCommandPalette = makeModalSetter("CommandPalette")
 	const setOpenRepositoryModal = makeModalSetter("OpenRepository")
 	const themeIdRef = useRef(themeId)
+	const themeConfigRef = useRef(themeConfig)
+	const systemAppearanceRef = useRef(systemAppearance)
 	const themeModalRef = useRef(themeModal)
 	themeIdRef.current = themeId
+	themeConfigRef.current = themeConfig
+	systemAppearanceRef.current = systemAppearance
 	themeModalRef.current = themeModal
 	const setLabelCache = useAtomSet(labelCacheAtom)
 	const setRepoMergeMethodsCache = useAtomSet(repoMergeMethodsCacheAtom)
@@ -853,9 +868,40 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 		}, 2500)
 	}
 
+	const previewActiveTheme = (id: ThemeId) => {
+		setActiveTheme(id)
+		themeIdRef.current = id
+		setThemeId(id)
+	}
+
+	const applyThemeConfig = (config: ThemeConfig, appearance: ThemeTone = systemAppearanceRef.current) => {
+		themeConfigRef.current = config
+		setThemeConfig(config)
+		previewActiveTheme(resolveThemeId(config, appearance))
+	}
+
 	useEffect(() => {
 		renderer.setBackgroundColor(colors.background)
 	}, [renderer, themeId, systemThemeGeneration])
+
+	useEffect(() => {
+		if (themeConfig.mode !== "system") return
+		let cancelled = false
+		const refreshAppearance = () => {
+			void detectSystemAppearance().then((appearance) => {
+				if (cancelled || appearance === systemAppearanceRef.current) return
+				systemAppearanceRef.current = appearance
+				setSystemAppearance(appearance)
+				previewActiveTheme(resolveThemeId(themeConfigRef.current, appearance))
+			})
+		}
+		const interval = globalThis.setInterval(refreshAppearance, 1000)
+		refreshAppearance()
+		return () => {
+			cancelled = true
+			globalThis.clearInterval(interval)
+		}
+	}, [themeConfig.mode])
 
 	useEffect(
 		() => () => {
@@ -2354,32 +2400,47 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	}
 
 	const openThemeModal = () => {
+		const systemConfig = themeConfig.mode === "system" ? themeConfig : systemThemeConfigForTheme(themeConfig.theme)
 		setThemeModal({
 			query: "",
 			filterMode: false,
-			tone: themeToneForThemeId(themeId),
-			initialThemeId: themeId,
+			mode: themeConfig.mode,
+			tone: themeConfig.mode === "system" ? systemAppearance : themeToneForThemeId(themeId),
+			fixedTheme: themeConfig.mode === "fixed" ? themeConfig.theme : themeId,
+			darkTheme: systemConfig.darkTheme,
+			lightTheme: systemConfig.lightTheme,
+			initialThemeConfig: themeConfig,
 		})
 	}
 
+	const themeConfigFromModal = (state: ThemeModalState): ThemeConfig =>
+		state.mode === "fixed" ? fixedThemeConfig(state.fixedTheme) : { mode: "system", darkTheme: state.darkTheme, lightTheme: state.lightTheme }
+
 	const closeThemeModal = (confirm: boolean) => {
-		const selectedTheme = themeDefinitions.find((theme) => theme.id === themeIdRef.current)
 		if (!confirm) {
-			setActiveTheme(themeModal.initialThemeId)
-			themeIdRef.current = themeModal.initialThemeId
-			setThemeId(themeModal.initialThemeId)
-		} else if (selectedTheme) {
-			void Effect.runPromise(saveStoredThemeId(selectedTheme.id)).catch((error) => flashNotice(errorMessage(error)))
-			flashNotice(`Theme: ${selectedTheme.name}`)
+			applyThemeConfig(themeModal.initialThemeConfig)
+		} else {
+			const nextConfig = themeConfigFromModal(themeModal)
+			applyThemeConfig(nextConfig)
+			void Effect.runPromise(saveStoredThemeConfig(nextConfig)).catch((error) => flashNotice(errorMessage(error)))
+			const selectedTheme = themeDefinitions.find((theme) => theme.id === resolveThemeId(nextConfig, systemAppearanceRef.current))
+			flashNotice(nextConfig.mode === "system" ? "Theme: Follow System" : `Theme: ${selectedTheme?.name ?? themeIdRef.current}`)
 		}
 		closeActiveModal()
 	}
 
 	const previewTheme = (id: ThemeId) => {
-		if (id === themeIdRef.current) return
-		setActiveTheme(id)
-		themeIdRef.current = id
-		setThemeId(id)
+		const current = themeModalRef.current
+		const nextConfig = themeConfigWithSelection(themeConfigFromModal(current), id, current.tone)
+		const next = {
+			...current,
+			fixedTheme: nextConfig.mode === "fixed" ? nextConfig.theme : current.fixedTheme,
+			darkTheme: nextConfig.mode === "system" ? nextConfig.darkTheme : current.darkTheme,
+			lightTheme: nextConfig.mode === "system" ? nextConfig.lightTheme : current.lightTheme,
+		}
+		themeModalRef.current = next
+		setThemeModal(next)
+		previewActiveTheme(id)
 	}
 
 	const toggleDiffWhitespaceMode = () => {
@@ -2389,11 +2450,13 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	}
 
 	const moveThemeSelection = (delta: number) => {
-		const filteredThemes = filterThemeDefinitions(themeModalRef.current.query, themeModalRef.current.tone)
+		const current = themeModalRef.current
+		const filteredThemes = filterThemeDefinitions(current.query, current.tone)
 		if (filteredThemes.length === 0) return
+		const selectedThemeId = current.mode === "fixed" ? current.fixedTheme : current.tone === "dark" ? current.darkTheme : current.lightTheme
 		const currentIndex = Math.max(
 			0,
-			filteredThemes.findIndex((theme) => theme.id === themeIdRef.current),
+			filteredThemes.findIndex((theme) => theme.id === selectedThemeId),
 		)
 		const selectedIndex = wrapIndex(currentIndex + delta, filteredThemes.length)
 		if (selectedIndex === currentIndex) return
@@ -2426,8 +2489,19 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 		themeModalRef.current = next
 		setThemeModal(next)
 
-		const nextThemeId = pairedThemeId(themeIdRef.current, tone) ?? filterThemeDefinitions("", tone)[0]?.id
+		const selectedThemeId =
+			current.mode === "system" ? (tone === "dark" ? current.darkTheme : current.lightTheme) : (pairedThemeId(current.fixedTheme, tone) ?? filterThemeDefinitions("", tone)[0]?.id)
+		const nextThemeId = selectedThemeId ?? filterThemeDefinitions("", tone)[0]?.id
 		if (nextThemeId) previewTheme(nextThemeId)
+	}
+
+	const toggleThemeMode = () => {
+		const current = themeModalRef.current
+		const mode: ThemeMode = current.mode === "fixed" ? "system" : "fixed"
+		const next = { ...current, query: "", filterMode: false, mode }
+		themeModalRef.current = next
+		setThemeModal(next)
+		previewActiveTheme(resolveThemeId(themeConfigFromModal(next), systemAppearanceRef.current))
 	}
 
 	const editThemeQuery = (transform: (query: string) => string) => {
@@ -3052,6 +3126,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 			closeWithoutSaving: () => closeThemeModal(false),
 			clearFilter: () => updateThemeQuery("", { filterMode: false }),
 			enterFilterMode: () => updateThemeQuery("", { filterMode: true }),
+			toggleMode: toggleThemeMode,
 			toggleTone: toggleThemeTone,
 			confirmSelection: () => closeThemeModal(true),
 			moveSelection: moveThemeSelection,
@@ -3746,7 +3821,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 				/>
 			) : null}
 			{themeModalActive ? (
-				<ThemeModal state={themeModal} activeThemeId={themeId} modalWidth={themeModalWidth} modalHeight={themeModalHeight} offsetLeft={themeModalLeft} offsetTop={themeModalTop} />
+				<ThemeModal state={themeModal} modalWidth={themeModalWidth} modalHeight={themeModalHeight} offsetLeft={themeModalLeft} offsetTop={themeModalTop} />
 			) : null}
 			{openRepositoryModalActive ? (
 				<OpenRepositoryModal
