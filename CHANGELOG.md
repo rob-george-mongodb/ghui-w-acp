@@ -1,5 +1,13 @@
 # @kitlangton/ghui
 
+## 0.7.1
+
+### Patch Changes
+
+- ba23f23: Show compact check-status indicators in the pull request list instead of full check counts.
+- 40b69dc: Fix wrapped diff line selection, preserve the selected line, highlight, and viewport position across whitespace-mode changes, and show the word-wrap shortcut in the diff view footer hints.
+- ba23f23: Use the active theme foreground color for unstyled diff text.
+
 ## 0.7.0
 
 ### Minor Changes
