@@ -81,6 +81,7 @@ import {
 	diffCommentSideLabel,
 	getStackedDiffCommentAnchors,
 	minimizeWhitespaceDiffFiles,
+	nearestDiffAnchorForLocation,
 	PullRequestDiffState,
 	pullRequestDiffKey,
 	safeDiffFileIndex,
@@ -225,6 +226,11 @@ interface AppliedDiffLineColor {
 interface AppliedDiffLineColorState {
 	readonly contextKey: string | null
 	readonly entries: readonly AppliedDiffLineColor[]
+}
+
+interface PendingDiffLocationRestore {
+	readonly anchor: StackedDiffCommentAnchor
+	readonly screenOffset: number
 }
 
 interface DiffCommentRangeSelection {
@@ -652,7 +658,7 @@ const diffSideTargets = (diff: DiffRenderable, anchor: DiffCommentAnchor, view: 
 
 const setDiffCommentLineColor = (diff: DiffRenderable, entry: AppliedDiffLineColor, color: DiffLineColorConfig) => {
 	for (const target of diffSideTargets(diff, entry.anchor, entry.view)) {
-		target.setLineColor(entry.anchor.localRenderLine, color)
+		target.setLineColor(entry.anchor.colorLine, color)
 	}
 }
 
@@ -855,6 +861,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	const prListScrollRef = useRef<ScrollBoxRenderable | null>(null)
 	const diffRenderableRefs = useRef(new Map<number, DiffRenderable>())
 	const diffCommentLineColorsRef = useRef<AppliedDiffLineColorState>({ contextKey: null, entries: [] })
+	const pendingDiffLocationRestoreRef = useRef<PendingDiffLocationRestore | null>(null)
 	const suppressNextDiffCommentScrollRef = useRef(false)
 	const headerFooterWidth = Math.max(24, contentWidth - 2)
 
@@ -1003,7 +1010,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 			: null
 	const selectedDiffCommentThreadKey = selectedDiffKey && selectedDiffCommentAnchor ? diffCommentThreadMapKey(selectedDiffKey, selectedDiffCommentAnchor) : null
 	const selectedDiffCommentThread = selectedDiffCommentThreadKey ? (diffCommentThreads[selectedDiffCommentThreadKey] ?? []) : []
-	const diffLineColorContextKey = selectedDiffKey ? `${selectedDiffKey}:${effectiveDiffRenderView}:${diffWrapMode}` : null
+	const diffLineColorContextKey = selectedDiffKey ? `${selectedDiffKey}:${effectiveDiffRenderView}:${diffWrapMode}:${diffWhitespaceMode}` : null
 	const diffCommentThreadAnchors = useMemo(() => {
 		if (!selectedDiffKey) return [] as readonly StackedDiffCommentAnchor[]
 		const seen = new Set<string>()
@@ -1375,6 +1382,25 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 		if (!diffFullView || !selectedDiffCommentAnchor) return
 		setDiffFileIndex((current) => (current === selectedDiffCommentAnchor.fileIndex ? current : selectedDiffCommentAnchor.fileIndex))
 	}, [diffFullView, selectedDiffCommentAnchor?.fileIndex])
+
+	useEffect(() => {
+		const pending = pendingDiffLocationRestoreRef.current
+		if (!pending || !diffFullView || diffCommentAnchors.length === 0) return
+		pendingDiffLocationRestoreRef.current = null
+		const nextAnchor = nearestDiffAnchorForLocation(diffCommentAnchors, pending.anchor)
+		if (!nextAnchor) return
+		const scroll = diffScrollRef.current
+		if (scroll) {
+			const viewportHeight = Math.max(1, scroll.viewport.height)
+			const maxScrollTop = Math.max(0, scroll.scrollHeight - viewportHeight)
+			const nextTop = Math.max(0, Math.min(maxScrollTop, nextAnchor.renderLine - pending.screenOffset))
+			suppressNextDiffCommentScrollRef.current = true
+			scroll.scrollTo({ x: 0, y: nextTop })
+			syncDiffScrollState()
+		}
+		setDiffCommentAnchorIndex(diffCommentAnchors.indexOf(nextAnchor))
+		setDiffFileIndex(nextAnchor.fileIndex)
+	}, [diffFullView, diffWhitespaceMode, diffCommentAnchors])
 
 	useEffect(() => {
 		const previous = diffCommentLineColorsRef.current
@@ -1805,8 +1831,13 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	}
 
 	const selectDiffCommentLine = (renderLine: number, side: DiffCommentSide | null) => {
-		const lineAnchors = diffCommentAnchors.filter((anchor) => anchor.renderLine === renderLine)
-		const nextAnchor = (side ? lineAnchors.find((anchor) => anchor.side === side) : undefined) ?? lineAnchors[0]
+		const fileIndex = stackedDiffFileIndexAtLine(stackedDiffFiles, renderLine)
+		const stackedFile = stackedDiffFiles[fileIndex]
+		if (!stackedFile || renderLine < stackedFile.diffStartLine || renderLine >= stackedFile.diffStartLine + stackedFile.diffHeight) return
+		const fileAnchors = diffCommentAnchors.filter((anchor) => anchor.fileIndex === fileIndex)
+		const lineAnchors = fileAnchors.filter((anchor) => anchor.renderLine === renderLine)
+		const nextAnchor =
+			(side ? lineAnchors.find((anchor) => anchor.side === side) : undefined) ?? lineAnchors[0] ?? [...fileAnchors].reverse().find((anchor) => anchor.renderLine <= renderLine)
 		if (!nextAnchor) return
 		suppressNextDiffCommentScrollRef.current = true
 		setDiffPreferredSide(side ?? nextAnchor.side)
@@ -2445,6 +2476,15 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 
 	const toggleDiffWhitespaceMode = () => {
 		const next = diffWhitespaceMode === "ignore" ? "show" : "ignore"
+		if (diffFullView && selectedDiffCommentAnchor) {
+			const scroll = diffScrollRef.current
+			const maxScreenOffset = Math.max(DIFF_STICKY_HEADER_LINES, (scroll?.viewport.height ?? wideBodyHeight) - 2)
+			const rawScreenOffset = scroll ? selectedDiffCommentAnchor.renderLine - scroll.scrollTop : DIFF_STICKY_HEADER_LINES
+			pendingDiffLocationRestoreRef.current = {
+				anchor: selectedDiffCommentAnchor,
+				screenOffset: Math.max(DIFF_STICKY_HEADER_LINES, Math.min(maxScreenOffset, rawScreenOffset)),
+			}
+		}
 		setDiffWhitespaceMode(next)
 		void Effect.runPromise(saveStoredDiffWhitespaceMode(next)).catch((error) => flashNotice(errorMessage(error)))
 	}

@@ -40,6 +40,7 @@ export interface DiffCommentAnchor {
 	readonly side: DiffCommentSide
 	readonly kind: DiffCommentKind
 	readonly renderLine: number
+	readonly colorLine: number
 	readonly text: string
 }
 
@@ -377,7 +378,7 @@ export const diffCommentLineLabel = (anchor: Pick<DiffCommentAnchor, "side" | "l
 
 export const diffCommentAnchorLabel = (anchor: Pick<DiffCommentAnchor, "side" | "line">) => `${diffCommentSideLabel(anchor)} ${diffCommentLineLabel(anchor)}`
 
-type PendingDiffCommentAnchor = Omit<DiffCommentAnchor, "renderLine">
+type PendingDiffCommentAnchor = Omit<DiffCommentAnchor, "renderLine" | "colorLine">
 
 const diffContentWidth = (lines: readonly string[], view: DiffView, width: number) => {
 	const lineNumberGutterWidth = patchLineNumberGutterWidth(lines)
@@ -416,29 +417,69 @@ export const getDiffCommentAnchors = (file: DiffFilePatch, view: DiffView = "uni
 	let oldLine = 0
 	let newLine = 0
 	let renderLine = 0
+	let colorLine = 0
+	let leftColorLine = 0
+	let rightColorLine = 0
+	let leftVisualLine = 0
+	let rightVisualLine = 0
 	let inHunk = false
 	let deletions: Array<PendingDiffCommentAnchor & { readonly height: number }> = []
 	let additions: Array<PendingDiffCommentAnchor & { readonly height: number }> = []
+
+	const alignSplitSides = () => {
+		if (leftVisualLine < rightVisualLine) {
+			const pad = rightVisualLine - leftVisualLine
+			leftColorLine += pad
+			leftVisualLine += pad
+		} else if (rightVisualLine < leftVisualLine) {
+			const pad = leftVisualLine - rightVisualLine
+			rightColorLine += pad
+			rightVisualLine += pad
+		}
+		renderLine = Math.max(leftVisualLine, rightVisualLine)
+	}
+
+	const pushSplitRow = (
+		deletion: (PendingDiffCommentAnchor & { readonly height: number }) | undefined,
+		addition: (PendingDiffCommentAnchor & { readonly height: number }) | undefined,
+	) => {
+		alignSplitSides()
+		if (deletion) anchors.push({ path: deletion.path, line: deletion.line, side: deletion.side, kind: deletion.kind, text: deletion.text, renderLine, colorLine: leftColorLine })
+		if (addition) anchors.push({ path: addition.path, line: addition.line, side: addition.side, kind: addition.kind, text: addition.text, renderLine, colorLine: rightColorLine })
+		leftColorLine++
+		rightColorLine++
+		leftVisualLine += deletion?.height ?? 1
+		rightVisualLine += addition?.height ?? 1
+		renderLine = Math.max(leftVisualLine, rightVisualLine)
+	}
+
+	const pushSplitContext = (anchor: PendingDiffCommentAnchor & { readonly height: number }) => {
+		alignSplitSides()
+		anchors.push({ path: anchor.path, line: anchor.line, side: anchor.side, kind: anchor.kind, text: anchor.text, renderLine, colorLine: rightColorLine })
+		leftColorLine++
+		rightColorLine++
+		leftVisualLine += anchor.height
+		rightVisualLine += anchor.height
+		renderLine = Math.max(leftVisualLine, rightVisualLine)
+	}
 
 	const flushChangeBlock = () => {
 		if (deletions.length === 0 && additions.length === 0) return
 		if (view === "split") {
 			const rowCount = Math.max(deletions.length, additions.length)
 			for (let index = 0; index < rowCount; index++) {
-				const deletion = deletions[index]
-				const addition = additions[index]
-				if (deletion) anchors.push({ path: deletion.path, line: deletion.line, side: deletion.side, kind: deletion.kind, text: deletion.text, renderLine })
-				if (addition) anchors.push({ path: addition.path, line: addition.line, side: addition.side, kind: addition.kind, text: addition.text, renderLine })
-				renderLine += Math.max(deletion?.height ?? 1, addition?.height ?? 1)
+				pushSplitRow(deletions[index], additions[index])
 			}
 		} else {
 			for (const deletion of deletions) {
-				anchors.push({ path: deletion.path, line: deletion.line, side: deletion.side, kind: deletion.kind, text: deletion.text, renderLine })
+				anchors.push({ path: deletion.path, line: deletion.line, side: deletion.side, kind: deletion.kind, text: deletion.text, renderLine, colorLine })
 				renderLine += deletion.height
+				colorLine++
 			}
 			for (const addition of additions) {
-				anchors.push({ path: addition.path, line: addition.line, side: addition.side, kind: addition.kind, text: addition.text, renderLine })
+				anchors.push({ path: addition.path, line: addition.line, side: addition.side, kind: addition.kind, text: addition.text, renderLine, colorLine })
 				renderLine += addition.height
+				colorLine++
 			}
 		}
 		deletions = []
@@ -477,10 +518,16 @@ export const getDiffCommentAnchors = (file: DiffFilePatch, view: DiffView = "uni
 		if (firstChar === " ") {
 			flushChangeBlock()
 			const text = line.slice(1)
-			anchors.push({ path: file.name, line: newLine, side: "RIGHT", kind: "context", renderLine, text })
+			const anchor = { path: file.name, line: newLine, side: "RIGHT", kind: "context", text, height: estimatedWrappedLineCount(text, contentWidth, wrapMode) } as const
+			if (view === "split") {
+				pushSplitContext(anchor)
+			} else {
+				anchors.push({ path: anchor.path, line: anchor.line, side: anchor.side, kind: anchor.kind, renderLine, colorLine, text: anchor.text })
+				renderLine += anchor.height
+				colorLine++
+			}
 			oldLine++
 			newLine++
-			renderLine += estimatedWrappedLineCount(text, contentWidth, wrapMode)
 		}
 	}
 
@@ -521,6 +568,30 @@ export const verticalDiffAnchor = <Anchor extends Pick<DiffCommentAnchor, "rende
 
 export const diffAnchorOnSide = <Anchor extends Pick<DiffCommentAnchor, "renderLine" | "side">>(anchors: readonly Anchor[], currentAnchor: Anchor | null, side: DiffCommentSide) =>
 	currentAnchor ? (anchors.find((anchor) => anchor.renderLine === currentAnchor.renderLine && anchor.side === side) ?? null) : null
+
+export const nearestDiffAnchorForLocation = <Anchor extends Pick<DiffCommentAnchor, "path" | "line" | "side" | "renderLine">>(
+	anchors: readonly Anchor[],
+	target: Anchor,
+): Anchor | null => {
+	const exact = anchors.find((anchor) => anchor.path === target.path && anchor.side === target.side && anchor.line === target.line)
+	if (exact) return exact
+
+	const nearestByLine = (candidates: readonly Anchor[]) =>
+		candidates.reduce<Anchor | null>((nearest, anchor) => {
+			if (!nearest) return anchor
+			const distance = Math.abs(anchor.line - target.line)
+			const nearestDistance = Math.abs(nearest.line - target.line)
+			if (distance < nearestDistance) return anchor
+			if (distance === nearestDistance && anchor.renderLine < nearest.renderLine) return anchor
+			return nearest
+		}, null)
+
+	return (
+		nearestByLine(anchors.filter((anchor) => anchor.path === target.path && anchor.side === target.side)) ??
+		nearestByLine(anchors.filter((anchor) => anchor.path === target.path)) ??
+		null
+	)
+}
 
 export const nearestDiffCommentAnchorIndex = (anchors: readonly DiffCommentAnchor[], renderLine: number) => {
 	if (anchors.length === 0) return 0

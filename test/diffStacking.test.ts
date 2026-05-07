@@ -6,6 +6,7 @@ import {
 	getStackedDiffCommentAnchors,
 	minimizeWhitespaceDiffFiles,
 	minimizeWhitespacePatch,
+	nearestDiffAnchorForLocation,
 	nearestDiffCommentAnchorIndex,
 	patchRenderableLineCount,
 	scrollTopForVisibleLine,
@@ -49,6 +50,37 @@ describe("stacked diff helpers", () => {
 		expect(secondFileAnchor?.renderLine).toBe(stacked[1]!.diffStartLine + 1)
 	})
 
+	test("keeps separate visual and color lines for wrapped unified diffs", () => {
+		const [file] = splitPatchFiles(`diff --git a/wrap.ts b/wrap.ts
+--- a/wrap.ts
++++ b/wrap.ts
+@@ -1,2 +1,2 @@
+ const first = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+ const second = true`)
+		const anchors = getDiffCommentAnchors(file!, "unified", "word", 20)
+
+		expect(anchors[0]).toMatchObject({ line: 1, renderLine: 0, colorLine: 0 })
+		expect(anchors[1]).toMatchObject({ line: 2, renderLine: 4, colorLine: 1 })
+	})
+
+	test("keeps split color lines aligned with the wrapped side renderables", () => {
+		const [file] = splitPatchFiles(`diff --git a/wrap.ts b/wrap.ts
+--- a/wrap.ts
++++ b/wrap.ts
+@@ -1,2 +1,2 @@
+-const oldValue = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
++const newValue = true
+ const after = true`)
+		const anchors = getDiffCommentAnchors(file!, "split", "word", 40)
+		const deletion = anchors.find((anchor) => anchor.kind === "deletion")!
+		const addition = anchors.find((anchor) => anchor.kind === "addition")!
+		const context = anchors.find((anchor) => anchor.kind === "context")!
+
+		expect(deletion).toMatchObject({ side: "LEFT", renderLine: 0, colorLine: 0 })
+		expect(addition).toMatchObject({ side: "RIGHT", renderLine: 0, colorLine: 0 })
+		expect(context).toMatchObject({ side: "RIGHT", renderLine: 4, colorLine: 3 })
+	})
+
 	test("chooses the first anchor at or below the current scroll line", () => {
 		const stacked = buildStackedDiffFiles(splitPatchFiles(patch), "unified", "none", 120)
 		const anchors = getStackedDiffCommentAnchors(stacked, "unified")
@@ -56,6 +88,20 @@ describe("stacked diff helpers", () => {
 		expect(nearestDiffCommentAnchorIndex(anchors, 0)).toBe(0)
 		expect(anchors[nearestDiffCommentAnchorIndex(anchors, stacked[1]!.headerLine)]?.fileIndex).toBe(1)
 		expect(nearestDiffCommentAnchorIndex(anchors, Number.MAX_SAFE_INTEGER)).toBe(anchors.length - 1)
+	})
+
+	test("restores the nearest visible anchor when whitespace mode removes the exact line", () => {
+		const [visible] = splitPatchFiles(`diff --git a/file.ts b/file.ts
+--- a/file.ts
++++ b/file.ts
+@@ -1,3 +1,3 @@
+ const first = true
+ const second = true
+ const third = true`)
+		const anchors = getDiffCommentAnchors(visible!)
+		const target = { ...anchors[1]!, line: 99 }
+
+		expect(nearestDiffAnchorForLocation(anchors, target)).toBe(anchors[2])
 	})
 
 	test("keeps visible lines stable while scrolling only near viewport edges", () => {
