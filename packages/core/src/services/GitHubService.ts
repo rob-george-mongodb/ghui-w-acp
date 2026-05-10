@@ -19,7 +19,7 @@ import {
 	type SubmitPullRequestReviewInput,
 } from "../domain.js"
 import { mergeActionCliArgs } from "../mergeActions.js"
-import { CommandError, CommandRunner, type JsonParseError } from "./CommandRunner.js"
+import { CommandError, CommandRunner, RateLimitError, type JsonParseError } from "./CommandRunner.js"
 
 const NullableString = Schema.NullOr(Schema.String)
 const OptionalNullableString = Schema.optionalKey(NullableString)
@@ -363,9 +363,14 @@ const getContextConclusion = (context: RawCheckContext): CheckItem["conclusion"]
 		StatusContext: (status) => (status.state ? STATUS_CONTEXT_CONCLUSION[status.state] : null) ?? null,
 	})
 
-const getCheckInfoFromContexts = (contexts: readonly RawCheckContext[]): Pick<PullRequestItem, "checkStatus" | "checkSummary" | "checks"> => {
+const STATUS_CHECKS_LIMIT = 100
+
+const getCheckInfoFromContexts = (
+	contexts: readonly RawCheckContext[],
+): Pick<PullRequestItem, "checkStatus" | "checkSummary" | "checks"> & { readonly checksLimitHit: boolean } => {
+	const checksLimitHit = contexts.length >= STATUS_CHECKS_LIMIT
 	if (contexts.length === 0) {
-		return { checkStatus: "none", checkSummary: null, checks: [] }
+		return { checkStatus: "none", checkSummary: null, checks: [], checksLimitHit: false }
 	}
 
 	let completed = 0
@@ -395,14 +400,14 @@ const getCheckInfoFromContexts = (contexts: readonly RawCheckContext[]): Pick<Pu
 	}
 
 	if (pending) {
-		return { checkStatus: "pending", checkSummary: `checks ${completed}/${contexts.length}`, checks }
+		return { checkStatus: "pending", checkSummary: `checks ${completed}/${contexts.length}${checksLimitHit ? "+" : ""}`, checks, checksLimitHit }
 	}
 
 	if (failing) {
-		return { checkStatus: "failing", checkSummary: `checks ${successful}/${contexts.length}`, checks }
+		return { checkStatus: "failing", checkSummary: `checks ${successful}/${contexts.length}${checksLimitHit ? "+" : ""}`, checks, checksLimitHit }
 	}
 
-	return { checkStatus: "passing", checkSummary: `checks ${successful}/${contexts.length}`, checks }
+	return { checkStatus: "passing", checkSummary: `checks ${successful}/${contexts.length}${checksLimitHit ? "+" : ""}`, checks, checksLimitHit }
 }
 
 const parsePullRequestSummary = (item: RawPullRequestSummaryNode): PullRequestItem => {
@@ -563,7 +568,9 @@ const fallbackCreatedComment = (input: CreatePullRequestCommentInput): PullReque
 	inReplyTo: null,
 })
 
-export type GitHubError = CommandError | JsonParseError | Schema.SchemaError
+export { parsePullRequestSummary, parsePullRequest, getCheckInfoFromContexts, pullRequestPage, searchQuery, STATUS_CHECKS_LIMIT }
+
+export type GitHubError = CommandError | RateLimitError | JsonParseError | Schema.SchemaError
 
 const MERGEABLE_BY_RAW: Record<string, Mergeable> = {
 	MERGEABLE: "mergeable",
@@ -591,20 +598,20 @@ export class GitHubService extends Context.Service<
 		readonly listPullRequestComments: (repository: string, number: number) => Effect.Effect<readonly PullRequestComment[], GitHubError>
 		readonly getPullRequestMergeInfo: (repository: string, number: number) => Effect.Effect<PullRequestMergeInfo, GitHubError>
 		readonly getRepositoryMergeMethods: (repository: string) => Effect.Effect<RepositoryMergeMethods, GitHubError>
-		readonly mergePullRequest: (repository: string, number: number, action: PullRequestMergeAction) => Effect.Effect<void, CommandError>
-		readonly closePullRequest: (repository: string, number: number) => Effect.Effect<void, CommandError>
+		readonly mergePullRequest: (repository: string, number: number, action: PullRequestMergeAction) => Effect.Effect<void, GitHubError>
+		readonly closePullRequest: (repository: string, number: number) => Effect.Effect<void, GitHubError>
 		readonly createPullRequestComment: (input: CreatePullRequestCommentInput) => Effect.Effect<PullRequestReviewComment, GitHubError>
 		readonly createPullRequestIssueComment: (repository: string, number: number, body: string) => Effect.Effect<PullRequestComment, GitHubError>
 		readonly replyToReviewComment: (repository: string, number: number, inReplyTo: string, body: string) => Effect.Effect<PullRequestComment, GitHubError>
 		readonly editPullRequestIssueComment: (repository: string, commentId: string, body: string) => Effect.Effect<PullRequestComment, GitHubError>
 		readonly editReviewComment: (repository: string, commentId: string, body: string) => Effect.Effect<PullRequestComment, GitHubError>
-		readonly deletePullRequestIssueComment: (repository: string, commentId: string) => Effect.Effect<void, CommandError>
-		readonly deleteReviewComment: (repository: string, commentId: string) => Effect.Effect<void, CommandError>
-		readonly submitPullRequestReview: (input: SubmitPullRequestReviewInput) => Effect.Effect<void, CommandError>
-		readonly toggleDraftStatus: (repository: string, number: number, isDraft: boolean) => Effect.Effect<void, CommandError>
+		readonly deletePullRequestIssueComment: (repository: string, commentId: string) => Effect.Effect<void, GitHubError>
+		readonly deleteReviewComment: (repository: string, commentId: string) => Effect.Effect<void, GitHubError>
+		readonly submitPullRequestReview: (input: SubmitPullRequestReviewInput) => Effect.Effect<void, GitHubError>
+		readonly toggleDraftStatus: (repository: string, number: number, isDraft: boolean) => Effect.Effect<void, GitHubError>
 		readonly listRepoLabels: (repository: string) => Effect.Effect<readonly { readonly name: string; readonly color: string | null }[], GitHubError>
-		readonly addPullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, CommandError>
-		readonly removePullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, CommandError>
+		readonly addPullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, GitHubError>
+		readonly removePullRequestLabel: (repository: string, number: number, label: string) => Effect.Effect<void, GitHubError>
 	}
 >()("ghui/GitHubService") {
 	static readonly layerNoDeps = Layer.effect(

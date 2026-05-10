@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect"
 import type { PullRequestItem } from "../domain.js"
-import { CommandRunner, type CommandError } from "./CommandRunner.js"
+import { CommandRunner, type CommandError, type RateLimitError } from "./CommandRunner.js"
 
 // `open` ships on macOS; `xdg-open` is the Linux/BSD convention; `start` is the
 // Windows shell built-in and requires a dummy title argument before the URL.
@@ -13,8 +13,8 @@ const platformOpener = (): { readonly command: string; readonly prefix: readonly
 export class BrowserOpener extends Context.Service<
 	BrowserOpener,
 	{
-		readonly openPullRequest: (pullRequest: PullRequestItem) => Effect.Effect<void, CommandError>
-		readonly openUrl: (url: string) => Effect.Effect<void, CommandError>
+		readonly openPullRequest: (pullRequest: PullRequestItem) => Effect.Effect<void, CommandError | RateLimitError>
+		readonly openUrl: (url: string) => Effect.Effect<void, CommandError | RateLimitError>
 	}
 >()("ghui/BrowserOpener") {
 	static readonly layerNoDeps = Layer.effect(

@@ -17,12 +17,28 @@ export class CommandError extends Schema.TaggedErrorClass<CommandError>()("Comma
 	cause: Schema.Defect,
 }) {}
 
+export class RateLimitError extends Schema.TaggedErrorClass<RateLimitError>()("RateLimitError", {
+	command: Schema.String,
+	args: Schema.Array(Schema.String),
+	detail: Schema.String,
+	retryAfterSeconds: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+}) {}
+
 export class JsonParseError extends Schema.TaggedErrorClass<JsonParseError>()("JsonParseError", {
 	command: Schema.String,
 	args: Schema.Array(Schema.String),
 	stdout: Schema.String,
 	cause: Schema.Defect,
 }) {}
+
+const RATE_LIMIT_PATTERNS = [/rate limit/i, /API rate limit exceeded/i, /abuse detection/i, /secondary rate limit/i, /retry after/i]
+
+export const isRateLimitError = (stderr: string): boolean => RATE_LIMIT_PATTERNS.some((pattern) => pattern.test(stderr))
+
+export const parseRetryAfterSeconds = (stderr: string): number | null => {
+	const match = stderr.match(/retry after (\d+)/i)
+	return match ? Number(match[1]) : null
+}
 
 const readStream = async (stream: ReadableStream | null | undefined) => {
 	if (!stream) return ""
@@ -32,12 +48,12 @@ const readStream = async (stream: ReadableStream | null | undefined) => {
 export class CommandRunner extends Context.Service<
 	CommandRunner,
 	{
-		readonly run: (command: string, args: readonly string[], options?: RunOptions) => Effect.Effect<CommandResult, CommandError>
+		readonly run: (command: string, args: readonly string[], options?: RunOptions) => Effect.Effect<CommandResult, CommandError | RateLimitError>
 		readonly runSchema: <S extends Schema.Top>(
 			schema: S,
 			command: string,
 			args: readonly string[],
-		) => Effect.Effect<S["Type"], CommandError | JsonParseError | Schema.SchemaError, S["DecodingServices"]>
+		) => Effect.Effect<S["Type"], CommandError | RateLimitError | JsonParseError | Schema.SchemaError, S["DecodingServices"]>
 	}
 >()("ghui/CommandRunner") {
 	static readonly layer = Layer.effect(
@@ -75,6 +91,9 @@ export class CommandRunner extends Context.Service<
 				)
 				if (result.exitCode !== 0) {
 					const detail = result.stderr.trim() || result.stdout.trim() || `exit code ${result.exitCode}`
+					if (isRateLimitError(detail)) {
+						return yield* new RateLimitError({ command, args: [...args], detail, retryAfterSeconds: parseRetryAfterSeconds(detail) })
+					}
 					return yield* new CommandError({ command, args: [...args], detail, cause: detail })
 				}
 				return result

@@ -61,8 +61,27 @@ export * from "./themeStore.js"
 export { BrowserOpener } from "./services/BrowserOpener.js"
 export { CacheService, CacheError, pullRequestCacheKey, type PullRequestCacheKey } from "./services/CacheService.js"
 export { Clipboard, ClipboardError } from "./services/Clipboard.js"
-export { CommandRunner, CommandError, JsonParseError, type CommandResult, type RunOptions } from "./services/CommandRunner.js"
-export { GitHubService, pullRequestFilesToPatch, type GitHubError } from "./services/GitHubService.js"
+export {
+	CommandRunner,
+	CommandError,
+	RateLimitError,
+	JsonParseError,
+	isRateLimitError,
+	parseRetryAfterSeconds,
+	type CommandResult,
+	type RunOptions,
+} from "./services/CommandRunner.js"
+export {
+	GitHubService,
+	pullRequestFilesToPatch,
+	parsePullRequestSummary,
+	parsePullRequest,
+	getCheckInfoFromContexts,
+	pullRequestPage,
+	searchQuery,
+	STATUS_CHECKS_LIMIT,
+	type GitHubError,
+} from "./services/GitHubService.js"
 export { MockGitHubService, buildMockPullRequests, type MockOptions } from "./services/MockGitHubService.js"
 
 export { makeCoreLayer, type CoreLayerOptions } from "./runtime.js"
