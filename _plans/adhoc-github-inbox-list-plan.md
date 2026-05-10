@@ -2,13 +2,21 @@
 
 ## Status
 
-Drafting after codebase research.
+Revised after reviewer feedback.
 
 ## Problem Summary
 
 ghui currently renders pull requests as a single list for either a repository view or one of four queue modes (`authored`, `review`, `assigned`, `mentioned`), then groups the visible rows by repository (`packages/core/src/pullRequestViews.ts:3-30`, `src/App.tsx:449-451`, `src/ui/PullRequestList.tsx:49-87`). That is materially different from GitHub’s web PR inbox, which is organized into action-oriented sections such as “Needs your review,” “Your drafts,” and “Needs action,” with richer row metadata and an updated-time filter.
 
 The requested change is to let ghui show pull requests more like the GitHub web UI, while defaulting the updated filter to the last month. That updated window does not need to change live at runtime, but it should be configurable from startup configuration.
+
+## Acceptance Criteria
+
+- ghui gains a dedicated `Inbox` view that renders grouped sections for `Needs your review`, `Your drafts`, `Waiting for review`, `Needs action`, and `Ready to merge`.
+- Inbox rows render richer metadata than the current one-line queue rows, including repository/number context, author, relative updated time, and status/comment signals derived from GitHub data already fetched by the app.
+- Inbox results default to PRs updated within the last month, with a startup-only env override; there is no requirement for a runtime-updatable dropdown in v1.
+- Existing `repository`, `authored`, `review`, `assigned`, and `mentioned` views remain available and keep their current pagination and sort behavior.
+- `Needs your teams' review`, exact github.com collapse/expand behavior, and a runtime-updatable updated-window control are out of scope for v1.
 
 ## Current Code Context
 
@@ -72,28 +80,46 @@ Continue using the existing `gh api graphql` transport through `GitHubService`, 
 Recommended v1 section model:
 
 1. `Needs your review`
-2. `Needs your teams' review` *(if team identification is available; see Open Questions)*
-3. `Your drafts`
-4. `Waiting for review`
-5. `Needs action`
-6. `Ready to merge`
+2. `Your drafts`
+3. `Waiting for review`
+4. `Needs action`
+5. `Ready to merge`
+
+`Needs your teams' review` is explicitly out of scope for v1. The repo has no team-membership discovery or team-config mechanism today, so promising GitHub parity there would introduce unresolved product and configuration work before the main inbox view even ships (`packages/core/src/themeStore.ts:18-41`).
 
 Recommended query strategy:
 
 - Reuse GitHub search qualifiers rather than trying to reverse-engineer an internal GitHub endpoint.
-- Build one query per section, each sorted by `updated-desc`, each filtered to open PRs, and each constrained by the configured updated-since cutoff.
-- Merge/dedupe the combined results with a fixed precedence order so one PR renders in exactly one section.
+- Build one search per section, each sorted by `updated-desc`, each filtered to open PRs, and each constrained by the configured updated-since cutoff.
+- Execute those searches in **one aliased GraphQL request** rather than firing five separate `gh api graphql` commands. That keeps the transport model the same while avoiding a 5x command/rate-limit multiplier (`packages/core/src/services/GitHubService.ts:632-643`, `_findings/codebase-research-pr-queries.md:143-156`).
+- Merge/dedupe the combined results with a **defined precedence order** so one PR renders in exactly one section.
 
 Representative section query shapes for planning purposes:
 
 - `Needs your review`: `is:pr is:open review-requested:@me updated:>=<cutoff> sort:updated-desc`
-- `Needs your teams' review`: `is:pr is:open team-review-requested:<org/team> updated:>=<cutoff> sort:updated-desc`
 - `Your drafts`: `is:pr is:open author:@me draft:true updated:>=<cutoff> sort:updated-desc`
-- `Waiting for review`: `is:pr is:open author:@me draft:false -review:approved -review:changes_requested updated:>=<cutoff> sort:updated-desc`
+- `Waiting for review`: broad authored search (`is:pr is:open author:@me draft:false updated:>=<cutoff> sort:updated-desc`), then client-side classification using `reviewDecision`, `isDraft`, and the section precedence rules below
 - `Needs action`: `is:pr is:open author:@me review:changes_requested updated:>=<cutoff> sort:updated-desc`
-- `Ready to merge`: `is:pr is:open author:@me review:approved status:success draft:false updated:>=<cutoff> sort:updated-desc`
+- `Ready to merge`: broad authored search (`is:pr is:open author:@me draft:false updated:>=<cutoff> sort:updated-desc`), then client-side classification using `reviewDecision`, check rollup, and draft state
+
+Important query-semantics decisions:
+
+- Do **not** rely on negated `review:` search qualifiers for `Waiting for review`; reviewer feedback correctly called out that this is not a safe way to express “awaiting review.” The authoritative assignment should happen client-side after fetch, using GraphQL fields the app already parses or will add (`packages/core/src/services/GitHubService.ts:226-261`).
+- Do **not** rely on `status:success` for `Ready to merge`; GitHub search `status:` is tied to commit status semantics and can miss modern check-run-only repos. The implementation should instead use the already-planned `statusCheckRollup`-derived `checkStatus` from the fetched PR data (`packages/core/src/services/GitHubService.ts:215-240`, `packages/core/src/services/GitHubService.ts:368-410`).
+
+Inbox section precedence must be explicit in the implementation and tests. For v1, classify each PR into exactly one section using this order:
+
+1. `Needs your review`
+2. `Your drafts`
+3. `Needs action`
+4. `Ready to merge`
+5. `Waiting for review`
+
+That precedence keeps action-required states ahead of passive authored states and avoids double-rendering when a PR matches multiple broad searches.
 
 Implementation note for scope control: inbox v1 should **not** reuse the current single-cursor load-more path. The composite inbox loader should fetch each section to a configured cap and return `hasNextPage = false` for inbox loads, leaving the existing load-more footer only on legacy repository/queue views (`src/ui/PullRequestList.tsx:83-85`, `src/App.tsx:1139-1147`).
+
+One additional implementation note: the inbox fetch path should keep its own section-assignment data in memory and treat the cached `PullRequestLoad.data` array as the source PR set. On cache read, sections should be re-derived from the cached PR fields rather than persisted as a second serialized structure. That avoids a deeper cache-schema redesign while still allowing the new `Inbox` view tag in cached queue snapshots (`packages/core/src/services/CacheService.ts:271-349`).
 
 ### 3. Extend `PullRequestItem` and GraphQL parsing for inbox-grade row data
 
@@ -113,7 +139,7 @@ Concrete change points:
 
 - Extend `SUMMARY_FIELDS_FRAGMENT` / `DETAIL_FIELDS_FRAGMENT` in `packages/core/src/services/GitHubService.ts:226-261`.
 - Update `parsePullRequestSummary` / `parsePullRequest` to preserve the new fields (`packages/core/src/services/GitHubService.ts:413-457`).
-- Keep `CachedPullRequestItemSchema`, encode/decode helpers, and cache round-trips in sync with backwards-compatible defaults (`packages/core/src/services/CacheService.ts:40-62`, `packages/core/src/services/CacheService.ts:102-154`).
+- Keep `CachedPullRequestItemSchema`, encode/decode helpers, and cache round-trips in sync with backwards-compatible defaults (`packages/core/src/services/CacheService.ts:40-62`, `packages/core/src/services/CacheService.ts:102-154`). Concretely, any newly added cached fields must decode safely from pre-upgrade rows by using optional schema keys and domain defaults rather than by making the new fields immediately required.
 
 ### 4. Make list grouping view-aware and teach the list UI about inbox sections
 
@@ -149,15 +175,10 @@ Recommended config model:
 - New app-config field, for example `prUpdatedSinceWindow`, with logical values like `"1m" | "3m" | "1y" | "any"`.
 - Default to `"1m"` so the inbox behaves like GitHub’s “Updated: Last month” default.
 - Expose an env override (for example `GHUI_PR_UPDATED_SINCE=1m|3m|1y|any`) through `resolveAppConfig()` (`packages/core/src/config.ts:17-35`).
-- Also support the same setting in `~/.config/ghui/config.json`, read once at startup only, because the user explicitly said the value need not be dynamic and the repo already has a file-backed config location (`packages/core/src/themeStore.ts:18-41`).
 
-To keep this maintainable, do **not** bolt more unrelated behavior into `themeStore.ts`. Instead, extract the shared config-path logic and have `resolveAppConfig()` merge:
+For v1, keep this **env-backed only**. Reviewer feedback correctly pointed out that `AppConfig` is currently resolved through Effect `Config` while `config.json` is a separate theme-only system (`packages/core/src/config.ts:25-35`, `packages/core/src/themeStore.ts:27-41`, `_findings/codebase-research-appconfig-and-updated-since.md:63-89`). Unifying those systems would be a meaningful refactor and is not necessary to satisfy the user’s “config file or env variable” requirement.
 
-1. file defaults from `config.json`
-2. env overrides
-3. built-in defaults
-
-Then teach the new inbox query builder to translate the logical window into an ISO date for GitHub’s documented `updated:` search qualifier.
+Then teach the new inbox query builder to translate the logical window into an ISO date for GitHub’s documented `updated:` search qualifier. This filter should apply to the new inbox searches only; existing repository/queue views should keep their current query semantics and `sort:created-desc` / repository ordering behavior (`packages/core/src/services/GitHubService.ts:459-462`).
 
 ### 7. Keep mock mode, commands, and tests aligned with the new view
 
@@ -169,10 +190,12 @@ Then teach the new inbox query builder to translate the logical window into an I
 
 1. **Core query/config tests**
    - Extend `packages/core/test/githubServiceQueries.test.ts` to assert the new GraphQL fields are parsed and the inbox search queries include `updated:>=...` plus `sort:updated-desc`.
-   - Add tests covering the startup config window default and env/file precedence (`packages/core/src/config.ts:17-35`, `packages/core/src/themeStore.ts:18-41`).
+   - Add dedicated tests for the inbox section-classification and dedup-precedence rules, since that merge logic is the most error-prone part of the design.
+   - Add tests covering the startup config window default and env override behavior (`packages/core/src/config.ts:17-35`).
 
 2. **Domain/cache tests**
    - Update `packages/core/test/cacheService.test.ts` so round-tripped cached PRs preserve the new inbox-relevant fields and the new `Inbox` view decodes from cached queue snapshots (`packages/core/src/services/CacheService.ts:40-67`, `packages/core/src/services/CacheService.ts:271-349`).
+   - Add an upgrade-compatibility test proving that cached rows written before the new inbox fields still decode successfully with schema defaults.
    - Update `packages/core/test/domain.test.ts` or add a dedicated inbox-section test file for section precedence / grouping helpers.
 
 3. **UI list tests**
@@ -185,20 +208,21 @@ Then teach the new inbox query builder to translate the logical window into an I
 
 ## Risks / Open Questions
 
-1. **Do we need exact GitHub parity for `Needs your teams' review`?**
-   - The repo currently has no team-membership discovery or team config surface beyond general config storage (`packages/core/src/themeStore.ts:18-41`).
-   - If exact parity is required, we likely need either configured team slugs in `config.json` / env or a new GitHub query to discover relevant teams. Otherwise, v1 should collapse direct + team review requests into a single `Needs your review` bucket.
-
-2. **Should inbox v1 support load-more pagination?**
+1. **Should inbox v1 support load-more pagination?**
    - The current list model has one `endCursor` / `hasNextPage` pair (`packages/core/src/pullRequestLoad.ts:4-9`), which is a poor fit for six independently paginated search queries.
    - Recommended answer: no load-more for inbox v1; keep paging on legacy views only.
 
-3. **How exact should the row chrome match github.com?**
+2. **How exact should the row chrome match github.com?**
    - The plan above targets grouped sections plus richer metadata, but not necessarily exact collapse/expand behavior or every control in the top filter bar.
    - If exact collapse behavior is part of the acceptance criteria, that should be called out before implementation because it affects list selection semantics and group-header interaction.
 
-4. **Config surface choice**
-   - The user said “config file or env variable,” which means env-only would be technically acceptable, but file + env override is the more durable product fit because ghui already persists non-theme settings in `config.json`-adjacent code.
+3. **`Needs your review` will still inherit GitHub search semantics**
+   - Search-based review-request buckets depend on GitHub’s own `review-requested:@me` behavior. Once a review is submitted, GitHub may remove the explicit review request, so this view may not exactly match every nuance of the website’s internal inbox logic.
+   - Recommended answer: accept GitHub search semantics for v1 and document any mismatch rather than block the feature on reverse-engineering non-public web behavior.
+
+4. **App.tsx remains a high-touch integration point**
+   - The current list/view orchestration is concentrated in `App.tsx` (`src/App.tsx:290-350`, `src/App.tsx:443-451`, `src/App.tsx:953-987`, `src/App.tsx:1118-1147`).
+   - Recommended answer: keep the refactor narrowly scoped to the inbox work unless implementation reveals the need to extract view/grouping atoms into a dedicated module.
 
 ## Relevant Files / Research References
 
