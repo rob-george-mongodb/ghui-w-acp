@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Schema } from "effect"
-import { CommandRunner, type CommandResult } from "../src/services/CommandRunner.ts"
-import { GitHubService } from "../src/services/GitHubService.ts"
+import { CommandRunner, type CommandResult, AppConfigService } from "@ghui/core"
+import { GitHubService } from "@ghui/core"
+
+const testAppConfig = Layer.succeed(
+	AppConfigService,
+	AppConfigService.of({ prFetchLimit: 200, prPageSize: 50, cachePath: null }),
+)
 
 interface RecordedCall {
 	readonly command: string
@@ -59,7 +64,7 @@ const runWith = <A>(effect: Effect.Effect<A, unknown, GitHubService>, layer: Lay
 describe("GitHubService comment edit/delete", () => {
 	test("editPullRequestIssueComment PATCHes the issue comments endpoint", async () => {
 		const recorder: RecordedCall[] = []
-		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(fakeCommandRunner(baseIssueResponse, recorder)))
+		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(Layer.merge(fakeCommandRunner(baseIssueResponse, recorder), testAppConfig)))
 		const updated = await runWith(
 			GitHubService.use((github) => github.editPullRequestIssueComment("owner/repo", "9001", "Updated body")),
 			layer,
@@ -75,7 +80,7 @@ describe("GitHubService comment edit/delete", () => {
 
 	test("editReviewComment PATCHes the pulls comments endpoint", async () => {
 		const recorder: RecordedCall[] = []
-		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(fakeCommandRunner(baseReviewResponse, recorder)))
+		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(Layer.merge(fakeCommandRunner(baseReviewResponse, recorder), testAppConfig)))
 		const updated = await runWith(
 			GitHubService.use((github) => github.editReviewComment("owner/repo", "7777", "Updated review body")),
 			layer,
@@ -88,7 +93,7 @@ describe("GitHubService comment edit/delete", () => {
 
 	test("deletePullRequestIssueComment DELETEs the issue comments endpoint", async () => {
 		const recorder: RecordedCall[] = []
-		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(fakeCommandRunner("", recorder)))
+		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(Layer.merge(fakeCommandRunner("", recorder), testAppConfig)))
 		await runWith(
 			GitHubService.use((github) => github.deletePullRequestIssueComment("owner/repo", "9001")),
 			layer,
@@ -100,7 +105,7 @@ describe("GitHubService comment edit/delete", () => {
 
 	test("deleteReviewComment DELETEs the pulls comments endpoint", async () => {
 		const recorder: RecordedCall[] = []
-		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(fakeCommandRunner("", recorder)))
+		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(Layer.merge(fakeCommandRunner("", recorder), testAppConfig)))
 		await runWith(
 			GitHubService.use((github) => github.deleteReviewComment("owner/repo", "7777")),
 			layer,

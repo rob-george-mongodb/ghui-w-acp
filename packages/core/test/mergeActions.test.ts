@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { PullRequestMergeAction, PullRequestMergeInfo } from "../src/domain.js"
-import { availableMergeKinds, mergeActionCliArgs, mergeKinds, visibleMergeKinds } from "../src/mergeActions.js"
+import { type PullRequestMergeAction, type PullRequestMergeInfo, availableMergeKinds, mergeActionCliArgs, mergeKinds, visibleMergeKinds } from "@ghui/core"
 
 const cleanInfo: PullRequestMergeInfo = {
 	repository: "owner/repo",

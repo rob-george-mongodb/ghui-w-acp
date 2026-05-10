@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from "react"
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
-import type { PullRequestComment, PullRequestItem } from "../domain.js"
+import type { PullRequestComment, PullRequestItem } from "@ghui/core"
 import { colors } from "./colors.js"
 import {
 	commentBodyRows,

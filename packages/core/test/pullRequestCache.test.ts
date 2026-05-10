@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import type { PullRequestItem } from "../src/domain.ts"
-import { mergeCachedDetails } from "../src/pullRequestCache.ts"
+import type { PullRequestItem } from "@ghui/core"
+import { mergeCachedDetails } from "@ghui/core"
 
 const pullRequest = (overrides: Partial<PullRequestItem> = {}): PullRequestItem => ({
 	repository: "owner/repo",

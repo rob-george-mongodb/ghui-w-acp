@@ -1,7 +1,7 @@
 import type { AppCommand } from "./commands.js"
 import { defineCommand } from "./commands.js"
 import type { LoadStatus, PullRequestItem, PullRequestReviewEvent } from "./domain.js"
-import type { DiffView, DiffWhitespaceMode, DiffWrapMode } from "./ui/diff.js"
+import type { DiffView, DiffWhitespaceMode, DiffWrapMode } from "./diff.js"
 import { type PullRequestView, viewEquals, viewLabel, viewMode } from "./pullRequestViews.js"
 
 interface AppCommandActions {

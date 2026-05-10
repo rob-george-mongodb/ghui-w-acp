@@ -1,15 +1,13 @@
 import type { DiffRenderable, MouseEvent, ScrollBoxRenderable } from "@opentui/core"
 import { useMemo, type Ref } from "react"
-import type { DiffCommentSide, PullRequestItem, PullRequestReviewComment } from "../domain.js"
+import type { DiffCommentSide, PullRequestItem, PullRequestReviewComment } from "@ghui/core"
 import { colors, lineNumberTextColor, type ThemeId } from "./colors.js"
 import { CommentBodyLine, commentCountText, commentMetaSegments, CommentSegmentsLine } from "./comments.js"
 import {
-	createDiffSyntaxStyle,
 	diffCommentAnchorLabel,
 	diffCommentLineLabel,
 	diffFileStats,
 	diffFileStatsText,
-	diffStatText,
 	stackedDiffFileIndexAtLine,
 	type DiffFileStats,
 	type DiffView,
@@ -18,7 +16,8 @@ import {
 	type PullRequestDiffState,
 	type StackedDiffCommentAnchor,
 	type StackedDiffFilePatch,
-} from "./diff.js"
+} from "@ghui/core"
+import { createDiffSyntaxStyle, diffStatText } from "./diff.js"
 import { LoadingPane, StatusCard } from "./DetailsPane.js"
 import { DiffStats } from "./diffStats.js"
 import { Divider, fitCell, PaddedRow, PlainLine, TextLine } from "./primitives.js"

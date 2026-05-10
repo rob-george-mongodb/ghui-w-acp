@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { PullRequestComment, PullRequestItem } from "../src/domain.ts"
+import type { PullRequestComment, PullRequestItem } from "@ghui/core"
 import { bodyPreview, getDetailHeaderHeight, getDetailJunctionRows, getScrollableDetailBodyHeight, truncateConversationPath } from "../src/ui/DetailsPane.tsx"
 
 const pullRequest = (body: string): PullRequestItem => ({

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test"
-import { buildAppCommands } from "../src/appCommands.js"
-import type { PullRequestItem } from "../src/domain.js"
+import { buildAppCommands, type PullRequestItem } from "@ghui/core"
 
 const activeView = { _tag: "Queue", mode: "review", repository: null } as const
 const selectedPullRequest: PullRequestItem = {
 	repository: "owner/repo",
 	author: "kit",
 	headRefOid: "abc123",
+	headRefName: "feature-branch",
 	number: 42,
 	title: "Review UX",
 	body: "",

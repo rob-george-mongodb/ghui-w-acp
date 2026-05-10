@@ -25,6 +25,7 @@ const isKeymap = <C>(item: ContextItem<C>): item is Keymap<C> => item instanceof
  * The benefit: `s` is typed `DiffCtx` automatically because the call site
  * fixes `C`. No `<DiffCtx>` repeated per command.
  */
-export const context = <C>(): Context<C> =>
+export const context =
+	<C>(): Context<C> =>
 	(...items: readonly ContextItem<C>[]): Keymap<C> =>
-		Keymap.union(...items.map((item) => isKeymap(item) ? item : buildCommand(item)))
+		Keymap.union(...items.map((item) => (isKeymap(item) ? item : buildCommand(item))))

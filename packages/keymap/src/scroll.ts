@@ -18,11 +18,12 @@ export interface Scrollable {
  * The Keymap requires its context to extend Scrollable. Lift it to a wider
  * context with `contramap` or `contramapMaybe`.
  */
-export const scrollCommands = <C extends Scrollable>(): Keymap<C> => Keymap.union(
-	command<C>({ id: "scroll.up",       title: "Up",            keys: ["k", "up"],                      run: (s) => s.scrollBy(-1) }),
-	command<C>({ id: "scroll.down",     title: "Down",          keys: ["j", "down"],                    run: (s) => s.scrollBy(1) }),
-	command<C>({ id: "scroll.half-up",  title: "Half page up",  keys: ["pageup", "ctrl+u"],             run: (s) => s.scrollBy(-s.halfPage) }),
-	command<C>({ id: "scroll.half-down",title: "Half page down",keys: ["pagedown", "ctrl+d", "ctrl+v"], run: (s) => s.scrollBy(s.halfPage) }),
-	command<C>({ id: "scroll.top",      title: "Top",           keys: ["g g", "home"],                  run: (s) => s.scrollTo(0) }),
-	command<C>({ id: "scroll.bottom",   title: "Bottom",        keys: ["shift+g", "end"],               run: (s) => s.scrollTo(Number.MAX_SAFE_INTEGER) }),
-)
+export const scrollCommands = <C extends Scrollable>(): Keymap<C> =>
+	Keymap.union(
+		command<C>({ id: "scroll.up", title: "Up", keys: ["k", "up"], run: (s) => s.scrollBy(-1) }),
+		command<C>({ id: "scroll.down", title: "Down", keys: ["j", "down"], run: (s) => s.scrollBy(1) }),
+		command<C>({ id: "scroll.half-up", title: "Half page up", keys: ["pageup", "ctrl+u"], run: (s) => s.scrollBy(-s.halfPage) }),
+		command<C>({ id: "scroll.half-down", title: "Half page down", keys: ["pagedown", "ctrl+d", "ctrl+v"], run: (s) => s.scrollBy(s.halfPage) }),
+		command<C>({ id: "scroll.top", title: "Top", keys: ["g g", "home"], run: (s) => s.scrollTo(0) }),
+		command<C>({ id: "scroll.bottom", title: "Bottom", keys: ["shift+g", "end"], run: (s) => s.scrollTo(Number.MAX_SAFE_INTEGER) }),
+	)

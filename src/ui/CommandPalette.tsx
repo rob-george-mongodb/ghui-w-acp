@@ -1,7 +1,6 @@
 import { TextAttributes, type MouseEvent } from "@opentui/core"
 import { useEffect, useMemo, useState } from "react"
-import type { AppCommand } from "../commands.js"
-import { clampCommandIndex } from "../commands.js"
+import { clampCommandIndex, type AppCommand } from "@ghui/core"
 import { colors } from "./colors.js"
 import { scrollTopForVisibleLine } from "./diff.js"
 import { centerCell, Filler, fitCell, HintRow, PlainLine, searchModalDims, SearchModalFrame, TextLine, trimCell } from "./primitives.js"

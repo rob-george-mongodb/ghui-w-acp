@@ -1,7 +1,6 @@
 import { TextAttributes } from "@opentui/core"
 import { useState } from "react"
-import type { LoadStatus, PullRequestItem } from "../domain.js"
-import { daysOpen } from "../date.js"
+import { daysOpen, type LoadStatus, type PullRequestItem } from "@ghui/core"
 import { colors, rowHoverBackground } from "./colors.js"
 import { fitCell, MatchedCell, PlainLine, SectionTitle, TextLine } from "./primitives.js"
 import { pullRequestRowDisplay, repoColor, reviewIcon } from "./pullRequests.js"

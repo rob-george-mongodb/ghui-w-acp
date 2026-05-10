@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { PullRequestItem, ReviewStatus } from "../src/domain.js"
+import type { PullRequestItem, ReviewStatus } from "@ghui/core"
 import { colors } from "../src/ui/colors.js"
 import { failingCheckNames, pullRequestMetadataText, pullRequestRowDisplay, reviewIcon, reviewLabel } from "../src/ui/pullRequests.js"
 

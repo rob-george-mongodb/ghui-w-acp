@@ -1,4 +1,4 @@
-import { filterThemeDefinitions, isThemeId, pairedThemeId, themeToneForThemeId, type ThemeId, type ThemeTone } from "./ui/colors.js"
+import { filterThemeMetadata, isThemeId, pairedThemeId, themeToneForThemeId, type ThemeId, type ThemeTone } from "./theme.js"
 
 export type ThemeMode = "fixed" | "system"
 
@@ -16,7 +16,7 @@ const defaultLightThemeId = "catppuccin-latte" satisfies ThemeId
 
 export const defaultThemeConfig: ThemeConfig = { mode: "fixed", theme: defaultDarkThemeId }
 
-const firstThemeForTone = (tone: ThemeTone) => filterThemeDefinitions("", tone)[0]?.id
+const firstThemeForTone = (tone: ThemeTone) => filterThemeMetadata("", tone)[0]?.id
 
 export const fallbackThemeForTone = (sourceTheme: ThemeId, tone: ThemeTone): ThemeId => {
 	if (themeToneForThemeId(sourceTheme) === tone) return sourceTheme

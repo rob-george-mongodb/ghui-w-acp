@@ -1,21 +1,26 @@
 import { TextAttributes } from "@opentui/core"
 import { Data } from "effect"
-import type {
-	PullRequestLabel,
-	PullRequestMergeInfo,
-	PullRequestMergeKind,
-	PullRequestMergeMethod,
-	PullRequestReviewComment,
-	PullRequestReviewEvent,
-	RepositoryMergeMethods,
-} from "../domain.js"
-import { allowedMergeMethodList } from "../domain.js"
-import { getMergeKindDefinition, mergeKindRowTitle, visibleMergeKinds } from "../mergeActions.js"
+import {
+	allowedMergeMethodList,
+	filterLabels,
+	getMergeKindDefinition,
+	mergeKindRowTitle,
+	visibleMergeKinds,
+	type ChangedFileSearchResult,
+	type PullRequestLabel,
+	type PullRequestMergeInfo,
+	type PullRequestMergeKind,
+	type PullRequestMergeMethod,
+	type PullRequestReviewComment,
+	type PullRequestReviewEvent,
+	type RepositoryMergeMethods,
+} from "@ghui/core"
+export { filterLabels, filterChangedFiles, type ChangedFileSearchResult } from "@ghui/core"
 import { clampCursor, commentEditorLines, cursorLineIndexForLines } from "./commentEditor.js"
 import { colors, filterThemeDefinitions, oppositeThemeTone, themeDefinitions, type ThemeId, type ThemeTone } from "./colors.js"
-import type { ThemeConfig, ThemeMode } from "../themeConfig.js"
+import type { ThemeConfig, ThemeMode } from "@ghui/core"
 import { commentDisplayRows, CommentSegmentsLine, type CommentDisplayLine } from "./comments.js"
-import { diffFileStats, diffFileStatsText, type DiffFilePatch } from "./diff.js"
+import { diffFileStats, diffFileStatsText, type DiffFilePatch } from "@ghui/core"
 import {
 	centerCell,
 	Divider,
@@ -138,172 +143,6 @@ export interface CommandPaletteState {
 export interface OpenRepositoryModalState {
 	readonly query: string
 	readonly error: string | null
-}
-
-export const filterLabels = (labels: readonly PullRequestLabel[], query: string) => {
-	const normalized = query.trim().toLowerCase()
-	if (normalized.length === 0) return labels
-	return labels.filter((label) => label.name.toLowerCase().includes(normalized))
-}
-
-export interface ChangedFileSearchResult {
-	readonly file: DiffFilePatch
-	readonly index: number
-	readonly matchIndexes: readonly number[]
-}
-
-interface PathSegment {
-	readonly text: string
-	readonly lower: string
-	readonly start: number
-	readonly index: number
-	readonly isBasename: boolean
-}
-
-interface FileTokenMatch {
-	readonly score: number
-	readonly indexes: readonly number[]
-	readonly start: number
-}
-
-const PATH_WORD_BOUNDARIES = new Set(["-", "_", "."])
-
-const pathSearchTokens = (query: string) =>
-	query
-		.trim()
-		.toLowerCase()
-		.split(/\s+/)
-		.filter((token) => token.length > 0)
-
-const pathSegments = (path: string): readonly PathSegment[] => {
-	const parts = path.split("/")
-	let start = 0
-	return parts.map((part, index) => {
-		const segment = {
-			text: part,
-			lower: part.toLowerCase(),
-			start,
-			index,
-			isBasename: index === parts.length - 1,
-		}
-		start += part.length + 1
-		return segment
-	})
-}
-
-const isPathWordBoundary = (segment: string, index: number) => index === 0 || PATH_WORD_BOUNDARIES.has(segment[index - 1] ?? "")
-
-const fuzzyIndexesFrom = (text: string, token: string, start: number): readonly number[] | null => {
-	const indexes: number[] = []
-	let tokenIndex = 0
-	for (let index = start; index < text.length && tokenIndex < token.length; index++) {
-		if (text[index] === token[tokenIndex]) {
-			indexes.push(index)
-			tokenIndex++
-		}
-	}
-	return tokenIndex === token.length ? indexes : null
-}
-
-const scoreSegmentMatch = (segment: PathSegment, token: string, localIndexes: readonly number[], contiguous: boolean): number => {
-	const localStart = localIndexes[0] ?? 0
-	const localEnd = localIndexes[localIndexes.length - 1] ?? localStart
-	const span = localEnd - localStart + 1
-	let score = 1000
-
-	if (segment.lower === token) score += 700
-	else if (contiguous && localStart === 0) score += 460
-	else if (contiguous && isPathWordBoundary(segment.lower, localStart)) score += 380
-	else if (contiguous) score += 280
-	else score += 120
-
-	if (segment.isBasename) score += 320
-	if (isPathWordBoundary(segment.lower, localStart)) score += 80
-	if (localStart === 0) score += 60
-	score += Math.min(segment.index, 8) * 18
-	score += Math.max(0, 120 - span * 4)
-	score += Math.max(0, 40 - localStart * 2)
-
-	if (segment.index === 0 && segment.lower === "packages" && segment.lower !== token) score -= 360
-
-	return score
-}
-
-const tokenMatchInSegment = (segment: PathSegment, token: string): FileTokenMatch | null => {
-	let best: FileTokenMatch | null = null
-	const addCandidate = (localIndexes: readonly number[], contiguous: boolean) => {
-		const score = scoreSegmentMatch(segment, token, localIndexes, contiguous)
-		const start = segment.start + (localIndexes[0] ?? 0)
-		const indexes = localIndexes.map((index) => segment.start + index)
-		if (!best || score > best.score || (score === best.score && start < best.start)) {
-			best = { score, indexes, start }
-		}
-	}
-
-	let substringStart = segment.lower.indexOf(token)
-	while (substringStart >= 0) {
-		addCandidate(
-			Array.from({ length: token.length }, (_, index) => substringStart + index),
-			true,
-		)
-		substringStart = segment.lower.indexOf(token, substringStart + 1)
-	}
-
-	for (let index = 0; index < segment.lower.length; index++) {
-		if (segment.lower[index] !== token[0]) continue
-		const indexes = fuzzyIndexesFrom(segment.lower, token, index)
-		if (indexes) addCandidate(indexes, false)
-	}
-
-	return best
-}
-
-const tokenMatchInPath = (segments: readonly PathSegment[], token: string): FileTokenMatch | null => {
-	let best: FileTokenMatch | null = null
-	for (const segment of segments) {
-		const match = tokenMatchInSegment(segment, token)
-		if (!match) continue
-		if (!best || match.score > best.score || (match.score === best.score && match.start < best.start)) {
-			best = match
-		}
-	}
-	return best
-}
-
-const fuzzyPathMatch = (path: string, query: string): { readonly score: number; readonly matchIndexes: readonly number[] } | null => {
-	const tokens = pathSearchTokens(query)
-	if (tokens.length === 0) return { score: 0, matchIndexes: [] }
-
-	const segments = pathSegments(path)
-	const matchIndexes = new Set<number>()
-	let score = 0
-	let previousStart = -1
-
-	for (const token of tokens) {
-		const match = tokenMatchInPath(segments, token)
-		if (!match) return null
-		score += match.score
-		score += previousStart < 0 || match.start >= previousStart ? 80 : -80
-		previousStart = match.start
-		for (const index of match.indexes) matchIndexes.add(index)
-	}
-
-	return { score, matchIndexes: [...matchIndexes].sort((left, right) => left - right) }
-}
-
-export const filterChangedFiles = (files: readonly DiffFilePatch[], query: string): readonly ChangedFileSearchResult[] => {
-	const hasQuery = pathSearchTokens(query).length > 0
-	const results: Array<ChangedFileSearchResult & { readonly score: number }> = []
-	for (const [index, file] of files.entries()) {
-		const match = fuzzyPathMatch(file.name, query)
-		if (match) results.push({ file, index, matchIndexes: match.matchIndexes, score: match.score })
-	}
-	if (hasQuery) {
-		results.sort((left, right) => {
-			return right.score - left.score || left.index - right.index
-		})
-	}
-	return results
 }
 
 export interface SubmitReviewOption {
@@ -624,7 +463,7 @@ export const ChangedFilesModal = ({
 	offsetTop,
 }: {
 	state: ChangedFilesModalState
-	results: readonly ChangedFileSearchResult[]
+	results: readonly ChangedFileSearchResult<DiffFilePatch>[]
 	totalCount: number
 	modalWidth: number
 	modalHeight: number

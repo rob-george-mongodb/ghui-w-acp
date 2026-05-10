@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Effect } from "effect"
-import { CacheService } from "../src/services/CacheService.js"
+import { CacheService } from "@ghui/core"
 import { binaryPackageName as binaryPackageNameForTarget, currentReleaseTargetId, findReleaseTarget } from "./release-targets.js"
 
 type CommandResult = {
@@ -40,6 +40,7 @@ const assertInstalledPackage = async (projectDir: string) => {
 
 	assert(packageJson.version === rootPackageJson.version, `Expected installed version ${rootPackageJson.version}, got ${packageJson.version}`)
 	assert(!packageJson.dependencies?.["@ghui/keymap"], "Published package must not depend on private workspace @ghui/keymap")
+	assert(!packageJson.dependencies?.["@ghui/core"], "Published package must not depend on private workspace @ghui/core")
 	assert(binaryPackageName && packageJson.optionalDependencies?.[binaryPackageName] === rootPackageJson.version, `Published package must depend on ${binaryPackageName}`)
 	assert(binaryPackageDir && (await Bun.file(join(binaryPackageDir, "bin", "ghui")).exists()), "Installed package must include the platform binary package")
 	assert(!(await Bun.file(join(packageDir, "src", "index.tsx")).exists()), "Published package must not rely on src/index.tsx")

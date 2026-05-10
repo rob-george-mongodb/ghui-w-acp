@@ -1,4 +1,4 @@
-import type { CheckConclusion, PullRequestItem, PullRequestLabel, ReviewStatus } from "../domain.js"
+import type { CheckConclusion, PullRequestItem, PullRequestLabel, ReviewStatus } from "@ghui/core"
 import { colors } from "./colors.js"
 
 export const shortRepoName = (repository: string) => repository.split("/")[1] ?? repository

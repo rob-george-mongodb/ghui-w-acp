@@ -4,16 +4,22 @@ import { useKeymap } from "@ghui/keymap/react"
 import { appKeymap, type AppCtx } from "./keymap/all.js"
 import { useOpenTuiSubscribe } from "./keyboard/opentuiAdapter.js"
 import { useKeyboard, useRenderer, useTerminalDimensions } from "@opentui/react"
-import { Cause, Effect, Layer, Schedule } from "effect"
+import { Cause, Effect, Schedule } from "effect"
 import * as AsyncResult from "effect/unstable/reactivity/AsyncResult"
 import * as Atom from "effect/unstable/reactivity/Atom"
 import * as AtomRegistry from "effect/unstable/reactivity/AtomRegistry"
 import { useContext, useEffect, useMemo, useRef, useState } from "react"
-import { buildAppCommands } from "./appCommands.js"
-import type { AppCommand } from "./commands.js"
-import { clampCommandIndex, type CommandScope, commandEnabled, defineCommand, filterCommands, sortCommandsByActiveScope } from "./commands.js"
-import { config } from "./config.js"
 import {
+	type AppConfig,
+	resolveAppConfig,
+	buildAppCommands,
+	type AppCommand,
+	clampCommandIndex,
+	type CommandScope,
+	commandEnabled,
+	defineCommand,
+	filterCommands,
+	sortCommandsByActiveScope,
 	type CreatePullRequestCommentInput,
 	type DiffCommentSide,
 	type ListPullRequestPageInput,
@@ -26,15 +32,17 @@ import {
 	type PullRequestReviewComment,
 	type RepositoryMergeMethods,
 	type SubmitPullRequestReviewInput,
-} from "./domain.js"
-import { allowedMergeMethodList, pullRequestMergeMethods } from "./domain.js"
-import { formatShortDate, formatTimestamp } from "./date.js"
-import { errorMessage } from "./errors.js"
-import { getMergeKindDefinition, mergeInfoFromPullRequest, requiresMarkReady, visibleMergeKinds } from "./mergeActions.js"
-import { Observability } from "./observability.js"
-import { mergeCachedDetails } from "./pullRequestCache.js"
-import type { PullRequestLoad } from "./pullRequestLoad.js"
-import {
+	allowedMergeMethodList,
+	pullRequestMergeMethods,
+	formatShortDate,
+	formatTimestamp,
+	errorMessage,
+	getMergeKindDefinition,
+	mergeInfoFromPullRequest,
+	requiresMarkReady,
+	visibleMergeKinds,
+	mergeCachedDetails,
+	type PullRequestLoad,
 	activePullRequestViews,
 	initialPullRequestView,
 	nextView,
@@ -45,15 +53,24 @@ import {
 	viewLabel,
 	viewMode,
 	viewRepository,
-} from "./pullRequestViews.js"
-import { BrowserOpener } from "./services/BrowserOpener.js"
-import { CacheService, type PullRequestCacheKey } from "./services/CacheService.js"
-import { Clipboard } from "./services/Clipboard.js"
-import { CommandRunner } from "./services/CommandRunner.js"
-import { GitHubService } from "./services/GitHubService.js"
-import { detectSystemAppearance } from "./systemAppearance.js"
-import { fixedThemeConfig, resolveThemeId, systemThemeConfigForTheme, themeConfigWithSelection, type ThemeConfig, type ThemeMode } from "./themeConfig.js"
-import { loadStoredDiffWhitespaceMode, loadStoredThemeConfig, saveStoredDiffWhitespaceMode, saveStoredThemeConfig } from "./themeStore.js"
+	BrowserOpener,
+	CacheService,
+	type PullRequestCacheKey,
+	Clipboard,
+	GitHubService,
+	detectSystemAppearance,
+	fixedThemeConfig,
+	resolveThemeId,
+	systemThemeConfigForTheme,
+	themeConfigWithSelection,
+	type ThemeConfig,
+	type ThemeMode,
+	loadStoredDiffWhitespaceMode,
+	loadStoredThemeConfig,
+	saveStoredDiffWhitespaceMode,
+	saveStoredThemeConfig,
+	makeCoreLayer,
+} from "@ghui/core"
 import { colors, filterThemeDefinitions, mixHex, pairedThemeId, setActiveTheme, themeDefinitions, themeToneForThemeId, type ThemeId, type ThemeTone } from "./ui/colors.js"
 import {
 	backspace as editorBackspace,
@@ -171,22 +188,15 @@ const parseOptionalPositiveInt = (value: string | undefined, fallback: number | 
 	return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
+const appConfig: AppConfig = await Effect.runPromise(resolveAppConfig)
 const mockPrCount = parseOptionalPositiveInt(process.env.GHUI_MOCK_PR_COUNT, null)
-const pullRequestPageSize = Math.min(100, parseOptionalPositiveInt(process.env.GHUI_PR_PAGE_SIZE, config.prPageSize) ?? config.prPageSize)
-const githubServiceLayer =
-	mockPrCount !== null
-		? (await import("./services/MockGitHubService.js")).MockGitHubService.layer({
-				prCount: mockPrCount,
-				repoCount: parseOptionalPositiveInt(process.env.GHUI_MOCK_REPO_COUNT, 4) ?? 4,
-			})
-		: GitHubService.layerNoDeps
-const cacheServiceLayer = mockPrCount !== null ? CacheService.disabledLayer : CacheService.layerFromPath(config.cachePath)
+const pullRequestPageSize = Math.min(100, parseOptionalPositiveInt(process.env.GHUI_PR_PAGE_SIZE, appConfig.prPageSize) ?? appConfig.prPageSize)
 
 const githubRuntime = Atom.runtime(
-	Layer.mergeAll(githubServiceLayer, cacheServiceLayer, Clipboard.layerNoDeps, BrowserOpener.layerNoDeps).pipe(
-		Layer.provide(CommandRunner.layer),
-		Layer.provideMerge(Observability.layer),
-	),
+	makeCoreLayer({
+		appConfig,
+		mock: mockPrCount !== null ? { prCount: mockPrCount, repoCount: parseOptionalPositiveInt(process.env.GHUI_MOCK_REPO_COUNT, 4) ?? 4 } : undefined,
+	}),
 )
 const [initialThemeConfig, initialDiffWhitespaceMode, initialSystemAppearance] = await Promise.all([
 	Effect.runPromise(loadStoredThemeConfig),
@@ -305,7 +315,7 @@ const pullRequestsAtom = githubRuntime
 						mode: queueMode,
 						repository,
 						cursor: null,
-						pageSize: Math.min(pullRequestPageSize, config.prFetchLimit),
+						pageSize: Math.min(pullRequestPageSize, appConfig.prFetchLimit),
 					})
 					.pipe(
 						Effect.tapError(() =>
@@ -329,7 +339,7 @@ const pullRequestsAtom = githubRuntime
 					data,
 					fetchedAt: new Date(),
 					endCursor: page.endCursor,
-					hasNextPage: page.hasNextPage && data.length < config.prFetchLimit,
+					hasNextPage: page.hasNextPage && data.length < appConfig.prFetchLimit,
 				} satisfies PullRequestLoad
 				const nextCache = { ...cache }
 				delete nextCache[cacheKey]
@@ -957,7 +967,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	const activeViews = activePullRequestViews(activeView)
 	const currentQueueCacheKey = viewCacheKey(activeView)
 	const loadedPullRequestCount = pullRequestLoad?.data.length ?? 0
-	const hasMorePullRequests = Boolean(pullRequestLoad?.hasNextPage && loadedPullRequestCount < config.prFetchLimit)
+	const hasMorePullRequests = Boolean(pullRequestLoad?.hasNextPage && loadedPullRequestCount < appConfig.prFetchLimit)
 	const isLoadingMorePullRequests = loadingMoreKey === currentQueueCacheKey
 	const pullRequestListRows = useMemo(
 		() =>
@@ -1127,7 +1137,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	}
 	const loadMorePullRequests = () => {
 		if (!pullRequestLoad || !hasMorePullRequests || isLoadingMorePullRequests || !pullRequestLoad.endCursor) return false
-		const remaining = config.prFetchLimit - pullRequestLoad.data.length
+		const remaining = appConfig.prFetchLimit - pullRequestLoad.data.length
 		if (remaining <= 0) return false
 		const cacheKey = currentQueueCacheKey
 		const generation = refreshGenerationRef.current
@@ -1147,7 +1157,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 					...currentLoad,
 					data,
 					endCursor: page.endCursor,
-					hasNextPage: page.hasNextPage && data.length < config.prFetchLimit,
+					hasNextPage: page.hasNextPage && data.length < appConfig.prFetchLimit,
 				}
 				setQueueLoadCache((current) => {
 					if (!current[cacheKey]) return current

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { normalizeThemeConfig, resolveThemeId, systemThemeConfigForTheme, themeConfigWithSelection } from "../src/themeConfig.js"
+import { normalizeThemeConfig, resolveThemeId, systemThemeConfigForTheme, themeConfigWithSelection } from "@ghui/core"
 
 describe("normalizeThemeConfig", () => {
 	test("keeps existing fixed theme config as the default", () => {

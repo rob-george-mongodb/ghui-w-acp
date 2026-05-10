@@ -11,12 +11,7 @@ export type KeySubscribe = (handler: (stroke: ParsedStroke) => boolean | void) =
  * `ctx` fresh on every dispatch. The dispatcher is re-created when `keymap`
  * identity changes, so swapping keymaps reactively works.
  */
-export const useKeymap = <C>(
-	keymap: Keymap<C>,
-	ctx: C,
-	subscribe: KeySubscribe,
-	options?: DispatcherOptions,
-): Dispatcher<C> => {
+export const useKeymap = <C>(keymap: Keymap<C>, ctx: C, subscribe: KeySubscribe, options?: DispatcherOptions): Dispatcher<C> => {
 	const ctxRef = useRef(ctx)
 	ctxRef.current = ctx
 
@@ -33,11 +28,6 @@ export const useKeymap = <C>(
 }
 
 export const useDispatchState = <C>(dispatcher: Dispatcher<C>): DispatchState =>
-	useSyncExternalStore(
-		(callback) => dispatcher.onStateChange(() => callback()),
-		dispatcher.getState,
-		dispatcher.getState,
-	)
+	useSyncExternalStore((callback) => dispatcher.onStateChange(() => callback()), dispatcher.getState, dispatcher.getState)
 
-export const usePendingSequence = <C>(dispatcher: Dispatcher<C>): readonly ParsedStroke[] =>
-	useDispatchState(dispatcher).pending
+export const usePendingSequence = <C>(dispatcher: Dispatcher<C>): readonly ParsedStroke[] => useDispatchState(dispatcher).pending

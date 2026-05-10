@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { errorMessage } from "../src/errors.js"
+import { errorMessage } from "@ghui/core"
 
 describe("errorMessage", () => {
 	test("Error instance returns its message", () => {

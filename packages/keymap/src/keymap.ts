@@ -9,10 +9,7 @@ const liftBinding = <C, C2>(binding: Binding<C>, project: (c2: C2) => C): Bindin
 	...(binding.meta ? { meta: binding.meta } : {}),
 })
 
-const liftBindingScope = <C, C2>(
-	binding: Binding<C>,
-	project: (c2: C2) => C | null | undefined | false,
-): Binding<C2> => {
+const liftBindingScope = <C, C2>(binding: Binding<C>, project: (c2: C2) => C | null | undefined | false): Binding<C2> => {
 	const inScope = (c2: C2): C | null => {
 		const result = project(c2)
 		if (result === null || result === undefined || result === false) return null
@@ -27,12 +24,12 @@ const liftBindingScope = <C, C2>(
 		},
 		...(binding.enabled
 			? {
-				enabled: (c2: C2) => {
-					const c = inScope(c2)
-					if (c === null) return false
-					return binding.enabled!(c)
-				},
-			}
+					enabled: (c2: C2) => {
+						const c = inScope(c2)
+						if (c === null) return false
+						return binding.enabled!(c)
+					},
+				}
 			: {}),
 		action: (c2: C2) => {
 			const c = inScope(c2)
@@ -99,18 +96,22 @@ export class Keymap<C> {
 	}
 
 	restrict(predicate: (ctx: C) => boolean): Keymap<C> {
-		return new Keymap<C>(this.bindings.map((b) => ({
-			...b,
-			when: b.when ? (ctx: C) => predicate(ctx) && b.when!(ctx) : predicate,
-		})))
+		return new Keymap<C>(
+			this.bindings.map((b) => ({
+				...b,
+				when: b.when ? (ctx: C) => predicate(ctx) && b.when!(ctx) : predicate,
+			})),
+		)
 	}
 
 	prefix(stroke: string | ParsedStroke): Keymap<C> {
 		const prepend = typeof stroke === "string" ? parseBinding(stroke) : [stroke]
-		return new Keymap<C>(this.bindings.map((b) => ({
-			...b,
-			sequence: [...prepend, ...b.sequence],
-		})))
+		return new Keymap<C>(
+			this.bindings.map((b) => ({
+				...b,
+				sequence: [...prepend, ...b.sequence],
+			})),
+		)
 	}
 
 	filter(predicate: (binding: Binding<C>) => boolean): Keymap<C> {

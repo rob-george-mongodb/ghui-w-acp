@@ -23,18 +23,13 @@ export interface PureDispatchOptions {
 	readonly disambiguationTimeoutMs?: number
 }
 
-const findMatches = <C>(
-	bindings: readonly Binding<C>[],
-	sequence: readonly ParsedStroke[],
-	ctx: C,
-) => {
+const findMatches = <C>(bindings: readonly Binding<C>[], sequence: readonly ParsedStroke[], ctx: C) => {
 	const exact: Binding<C>[] = []
 	const continuing: Binding<C>[] = []
 	for (const binding of bindings) {
 		if (binding.sequence.length === 0) continue
 		const status = isBindingActive(binding, ctx)
-		const visible = status === true
-			|| (typeof status === "string" && status !== "out of scope" && status !== "disabled")
+		const visible = status === true || (typeof status === "string" && status !== "out of scope" && status !== "disabled")
 		if (!visible) continue
 		if (sequenceMatches(binding.sequence, sequence)) exact.push(binding)
 		else if (sequenceStartsWith(binding.sequence, sequence)) continuing.push(binding)
@@ -93,12 +88,7 @@ export const pureDispatch = <C>(
  * recompute against current ctx — rather than capturing the binding at dispatch
  * time — keeps state-change scenarios correct.
  */
-export const pureTick = <C>(
-	keymap: Keymap<C>,
-	state: DispatchState,
-	ctx: C,
-	now: number,
-): { readonly state: DispatchState; readonly decision: DispatchDecision<C> | null } => {
+export const pureTick = <C>(keymap: Keymap<C>, state: DispatchState, ctx: C, now: number): { readonly state: DispatchState; readonly decision: DispatchDecision<C> | null } => {
 	if (state.timeoutAt === null || now < state.timeoutAt) {
 		return { state, decision: null }
 	}

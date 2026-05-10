@@ -1,4 +1,4 @@
-import type { PullRequestItem } from "../domain.js"
+import type { PullRequestItem } from "@ghui/core"
 import { colors } from "./colors.js"
 
 type DiffStatsPart = { readonly key: string; readonly text: string; readonly color: string }

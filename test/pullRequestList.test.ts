@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { PullRequestItem } from "../src/domain.ts"
+import type { PullRequestItem } from "@ghui/core"
 import { buildPullRequestListRows } from "../src/ui/PullRequestList.tsx"
 
 const pullRequest = (overrides: Partial<PullRequestItem> = {}): PullRequestItem => ({

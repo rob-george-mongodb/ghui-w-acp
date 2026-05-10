@@ -1,33 +1,18 @@
-export type ThemeId =
-	| "system"
-	| "ghui"
-	| "tokyo-night"
-	| "catppuccin"
-	| "catppuccin-latte"
-	| "rose-pine"
-	| "rose-pine-dawn"
-	| "gruvbox"
-	| "gruvbox-light"
-	| "nord"
-	| "dracula"
-	| "kanagawa"
-	| "one-dark"
-	| "one-light"
-	| "monokai"
-	| "solarized-dark"
-	| "solarized-light"
-	| "everforest"
-	| "vesper"
-	| "vague"
-	| "ayu"
-	| "ayu-mirage"
-	| "ayu-light"
-	| "github-dark-dimmed"
-	| "palenight"
-	| "opencode"
-	| "cursor"
+import {
+	type ThemeId,
+	type ThemeTone,
+	type ThemeMetadata,
+	themeMetadataCatalog,
+	isThemeId,
+	getThemeMetadata,
+	themeToneForThemeId,
+	oppositeThemeTone,
+	pairedThemeId,
+	filterThemeMetadata,
+} from "@ghui/core"
 
-export type ThemeTone = "dark" | "light"
+export type { ThemeId, ThemeTone, ThemeMetadata }
+export { themeMetadataCatalog, isThemeId, getThemeMetadata, themeToneForThemeId, oppositeThemeTone, pairedThemeId, filterThemeMetadata }
 
 export interface ColorPalette {
 	readonly background: string
@@ -1291,68 +1276,48 @@ const cursorColors: ColorPalette = {
 	},
 }
 
-export const themeDefinitions: readonly ThemeDefinition[] = [
-	{ id: "system", name: "System", description: "Use the terminal foreground, background, and ANSI palette", tone: "dark", colors: systemColors },
-	{ id: "ghui", name: "GHUI", description: "Warm parchment accents on a deep slate background", tone: "dark", colors: ghuiColors },
-	{ id: "tokyo-night", name: "Tokyo Night", description: "Cool indigo surfaces with neon editor accents", tone: "dark", colors: tokyoNightColors },
-	{ id: "catppuccin", name: "Catppuccin", description: "Mocha lavender, peach, and soft pastel contrast", tone: "dark", colors: catppuccinColors },
-	{ id: "catppuccin-latte", name: "Catppuccin Latte", description: "Light frothy cream with pastel lavender and peach", tone: "light", colors: catppuccinLatteColors },
-	{ id: "rose-pine", name: "Rose Pine", description: "Muted rose, pine, and gold on dusky violet", tone: "dark", colors: rosePineColors },
-	{ id: "rose-pine-dawn", name: "Rose Pine Dawn", description: "Soft morning light with rose and sage accents", tone: "light", colors: rosePineDawnColors },
-	{ id: "gruvbox", name: "Gruvbox", description: "Retro warm earth tones with punchy semantic accents", tone: "dark", colors: gruvboxColors },
-	{ id: "gruvbox-light", name: "Gruvbox Light", description: "Warm parchment background with earthy retro colors", tone: "light", colors: gruvboxLightColors },
-	{ id: "nord", name: "Nord", description: "Arctic blue-gray surfaces with frosty accents", tone: "dark", colors: nordColors },
-	{ id: "dracula", name: "Dracula", description: "High-contrast purple, pink, cyan, and green", tone: "dark", colors: draculaColors },
-	{ id: "kanagawa", name: "Kanagawa", description: "Ink-wash indigo, wave blues, and autumn accents", tone: "dark", colors: kanagawaColors },
-	{ id: "one-dark", name: "One Dark", description: "Atom-style charcoal with clean blue and green accents", tone: "dark", colors: oneDarkColors },
-	{ id: "one-light", name: "One Light", description: "Clean light surfaces with balanced blue and green accents", tone: "light", colors: oneLightColors },
-	{ id: "monokai", name: "Monokai", description: "Classic dark olive with electric syntax colors", tone: "dark", colors: monokaiColors },
-	{ id: "solarized-dark", name: "Solarized Dark", description: "Low-contrast blue-green base with calibrated accents", tone: "dark", colors: solarizedDarkColors },
-	{ id: "solarized-light", name: "Solarized Light", description: "Warm beige base with the same calibrated accent colors", tone: "light", colors: solarizedLightColors },
-	{ id: "everforest", name: "Everforest", description: "Soft green-gray forest tones with warm highlights", tone: "dark", colors: everforestColors },
-	{ id: "vesper", name: "Vesper", description: "Minimal black surfaces with peach and aqua accents", tone: "dark", colors: vesperColors },
-	{ id: "vague", name: "Vague", description: "Muted low-contrast charcoal with soft editor accents", tone: "dark", colors: vagueColors },
-	{ id: "ayu", name: "Ayu", description: "Modern bright dark theme with blue and orange accents", tone: "dark", colors: ayuColors },
-	{ id: "ayu-mirage", name: "Ayu Mirage", description: "Medium-contrast blue-gray with vibrant syntax colors", tone: "dark", colors: ayuMirageColors },
-	{ id: "ayu-light", name: "Ayu Light", description: "Clean light theme with crisp blue and orange accents", tone: "light", colors: ayuLightColors },
-	{ id: "github-dark-dimmed", name: "GitHub Dark Dimmed", description: "GitHub-inspired muted dark blue-gray with soft accents", tone: "dark", colors: githubDarkDimmedColors },
-	{ id: "palenight", name: "Palenight", description: "Material-inspired purple-blue with soft lavender tones", tone: "dark", colors: palenightColors },
-	{ id: "opencode", name: "OpenCode", description: "Charcoal panels with peach, violet, and blue highlights", tone: "dark", colors: opencodeColors },
-	{ id: "cursor", name: "Cursor", description: "Deep charcoal base with Anysphere's signature bright blue accents", tone: "dark", colors: cursorColors },
-] as const
-
-const pairedThemeIds: Partial<Record<ThemeId, ThemeId>> = {
-	catppuccin: "catppuccin-latte",
-	"catppuccin-latte": "catppuccin",
-	"rose-pine": "rose-pine-dawn",
-	"rose-pine-dawn": "rose-pine",
-	gruvbox: "gruvbox-light",
-	"gruvbox-light": "gruvbox",
-	"one-dark": "one-light",
-	"one-light": "one-dark",
-	"solarized-dark": "solarized-light",
-	"solarized-light": "solarized-dark",
-	ayu: "ayu-light",
-	"ayu-mirage": "ayu-light",
-	"ayu-light": "ayu",
+const palettesById: Record<ThemeId, ColorPalette> = {
+	system: systemColors,
+	ghui: ghuiColors,
+	"tokyo-night": tokyoNightColors,
+	catppuccin: catppuccinColors,
+	"catppuccin-latte": catppuccinLatteColors,
+	"rose-pine": rosePineColors,
+	"rose-pine-dawn": rosePineDawnColors,
+	gruvbox: gruvboxColors,
+	"gruvbox-light": gruvboxLightColors,
+	nord: nordColors,
+	dracula: draculaColors,
+	kanagawa: kanagawaColors,
+	"one-dark": oneDarkColors,
+	"one-light": oneLightColors,
+	monokai: monokaiColors,
+	"solarized-dark": solarizedDarkColors,
+	"solarized-light": solarizedLightColors,
+	everforest: everforestColors,
+	vesper: vesperColors,
+	vague: vagueColors,
+	ayu: ayuColors,
+	"ayu-mirage": ayuMirageColors,
+	"ayu-light": ayuLightColors,
+	"github-dark-dimmed": githubDarkDimmedColors,
+	palenight: palenightColors,
+	opencode: opencodeColors,
+	cursor: cursorColors,
 }
+
+export const themeDefinitions: readonly ThemeDefinition[] = themeMetadataCatalog.map(
+	(meta): ThemeDefinition => ({
+		...meta,
+		colors: palettesById[meta.id],
+	}),
+)
 
 let activeTheme = themeDefinitions.find((theme) => theme.id === "ghui") ?? themeDefinitions[0]!
 
 export const colors: ColorPalette = { ...ghuiColors }
 
 export const getThemeDefinition = (id: ThemeId) => themeDefinitions.find((theme) => theme.id === id) ?? themeDefinitions[0]!
-
-export const isThemeId = (value: unknown): value is ThemeId => typeof value === "string" && themeDefinitions.some((theme) => theme.id === value)
-
-export const themeToneForThemeId = (id: ThemeId): ThemeTone => getThemeDefinition(id).tone
-
-export const oppositeThemeTone = (tone: ThemeTone): ThemeTone => (tone === "dark" ? "light" : "dark")
-
-export const pairedThemeId = (id: ThemeId, tone: ThemeTone): ThemeId | null => {
-	const pairedId = pairedThemeIds[id]
-	return pairedId && themeToneForThemeId(pairedId) === tone ? pairedId : null
-}
 
 export const filterThemeDefinitions = (query: string, tone: ThemeTone = "dark") => {
 	const normalized = query.trim().toLowerCase()

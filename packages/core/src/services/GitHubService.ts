@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect"
-import { config } from "../config.js"
+import { AppConfigLive, AppConfigService } from "../config.js"
 import {
 	DiffCommentSide,
 	pullRequestQueueSearchQualifier,
@@ -611,6 +611,7 @@ export class GitHubService extends Context.Service<
 		GitHubService,
 		Effect.gen(function* () {
 			const command = yield* CommandRunner
+			const appConfig = yield* AppConfigService
 
 			const ghJson = <S extends Schema.Top>(label: string, schema: S, args: readonly string[]) =>
 				command.runSchema(schema, "gh", args).pipe(Effect.withSpan(`GitHubService.${label}`))
@@ -680,8 +681,8 @@ export class GitHubService extends Context.Service<
 				const pullRequests: PullRequestItem[] = []
 				let cursor: string | null = null
 
-				while (pullRequests.length < config.prFetchLimit) {
-					const page: PullRequestPage = yield* loadPage({ mode, repository, cursor, pageSize: Math.min(100, config.prFetchLimit - pullRequests.length) })
+				while (pullRequests.length < appConfig.prFetchLimit) {
+					const page: PullRequestPage = yield* loadPage({ mode, repository, cursor, pageSize: Math.min(100, appConfig.prFetchLimit - pullRequests.length) })
 					pullRequests.push(...page.items)
 					if (!page.hasNextPage || !page.endCursor) break
 					cursor = page.endCursor
@@ -964,5 +965,5 @@ export class GitHubService extends Context.Service<
 		}),
 	)
 
-	static readonly layer = GitHubService.layerNoDeps.pipe(Layer.provide(CommandRunner.layer))
+	static readonly layer = GitHubService.layerNoDeps.pipe(Layer.provide(CommandRunner.layer), Layer.provide(AppConfigLive))
 }

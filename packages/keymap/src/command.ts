@@ -32,7 +32,7 @@ const buildMeta = (config: CommandConfig<unknown>): BindingMeta | undefined => {
 export const command = <C>(config: CommandConfig<C>): Keymap<C> => {
 	const keys = typeof config.keys === "string" ? [config.keys] : config.keys
 	const meta = buildMeta(config as CommandConfig<unknown>)
-	const sequences = keys.length === 0 ? [[]] as readonly (readonly never[])[] : keys.map(parseBinding)
+	const sequences = keys.length === 0 ? ([[]] as readonly (readonly never[])[]) : keys.map(parseBinding)
 	const bindings: Binding<C>[] = sequences.map((sequence) => ({
 		sequence,
 		...(config.when ? { when: config.when } : {}),

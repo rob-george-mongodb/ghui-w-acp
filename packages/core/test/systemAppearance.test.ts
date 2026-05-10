@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { appearanceFromLinuxSetting } from "../src/systemAppearance.js"
+import { appearanceFromLinuxSetting } from "@ghui/core"
 
 describe("appearanceFromLinuxSetting", () => {
 	test("detects GNOME dark preference", () => {

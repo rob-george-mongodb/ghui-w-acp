@@ -2,9 +2,9 @@ import { mkdir } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
 import { Effect, Schema } from "effect"
-import { isThemeId, type ThemeId } from "./ui/colors.js"
+import { isThemeId, type ThemeId } from "./theme.js"
 import { normalizeThemeConfig, type ThemeConfig } from "./themeConfig.js"
-import { DiffWhitespaceMode } from "./ui/diff.js"
+import { DiffWhitespaceMode } from "./diff.js"
 
 interface StoredConfig {
 	readonly theme?: unknown

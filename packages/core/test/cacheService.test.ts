@@ -4,10 +4,10 @@ import { mkdtemp, rm } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
-import type { PullRequestItem } from "../src/domain.ts"
-import type { PullRequestLoad } from "../src/pullRequestLoad.ts"
-import type { PullRequestView } from "../src/pullRequestViews.ts"
-import { CacheService, pullRequestCacheKey } from "../src/services/CacheService.ts"
+import type { PullRequestItem } from "@ghui/core"
+import type { PullRequestLoad } from "@ghui/core"
+import type { PullRequestView } from "@ghui/core"
+import { CacheService, pullRequestCacheKey } from "@ghui/core"
 
 const tempDirs: string[] = []
 
@@ -27,6 +27,7 @@ const pullRequest = (number: number, overrides: Partial<PullRequestItem> = {}): 
 	repository: "owner/repo",
 	author: "author",
 	headRefOid: `sha-${number}`,
+	headRefName: `branch-${number}`,
 	number,
 	title: `PR ${number}`,
 	body: "Body",
@@ -179,7 +180,7 @@ describe("CacheService", () => {
 		)
 
 		const db = new Database(filename)
-		db.run("update pull_requests set data_json = ? where pr_key = ?", "{", pullRequestCacheKey({ repository: "owner/repo", number: 1 }))
+		db.run("update pull_requests set data_json = ? where pr_key = ?", ["{", pullRequestCacheKey({ repository: "owner/repo", number: 1 })])
 		db.close()
 
 		const cached = await runCache(

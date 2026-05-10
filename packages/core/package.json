@@ -1,0 +1,14 @@
+{
+	"name": "@ghui/core",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "Core primitives shared across ghui packages.",
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"scripts": {
+		"test": "bun test test",
+		"typecheck": "bunx tsc --noEmit"
+	}
+}

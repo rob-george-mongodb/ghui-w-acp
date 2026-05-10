@@ -1,6 +1,6 @@
 import { homedir } from "node:os"
 import { join } from "node:path"
-import { Config, Effect } from "effect"
+import { Config, Context, Effect, Layer } from "effect"
 
 const positiveIntOr = (fallback: number) => (value: number) => (Number.isFinite(value) && value > 0 ? value : fallback)
 
@@ -14,14 +14,22 @@ const resolveCachePath = () => {
 	return value && value.length > 0 ? value : defaultCachePath()
 }
 
+export interface AppConfig {
+	readonly prFetchLimit: number
+	readonly prPageSize: number
+	readonly cachePath: string | null
+}
+
+export class AppConfigService extends Context.Service<AppConfigService, AppConfig>()("ghui/AppConfig") {}
+
 const appConfig = Config.all({
 	prFetchLimit: Config.int("GHUI_PR_FETCH_LIMIT").pipe(Config.withDefault(200), Config.map(positiveIntOr(200))),
 	prPageSize: Config.int("GHUI_PR_PAGE_SIZE").pipe(Config.withDefault(50), Config.map(pageSizeOr(50))),
 	cachePath: Config.succeed(resolveCachePath()),
 })
 
-export const config = Effect.runSync(
-	Effect.gen(function* () {
-		return yield* appConfig
-	}),
-)
+export const resolveAppConfig = Effect.gen(function* () {
+	return yield* appConfig
+})
+
+export const AppConfigLive = Layer.effect(AppConfigService, resolveAppConfig)

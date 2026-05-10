@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import type { AppCommand, CommandScope } from "../src/commands.ts"
+import type { AppCommand, CommandScope } from "@ghui/core"
 import { buildCommandPaletteRows, commandPaletteClampScrollTop, commandPaletteScrollTop, commandPaletteSelectedRowIndex } from "../src/ui/CommandPalette.tsx"
 
 const command = (id: string, scope: CommandScope): AppCommand => ({

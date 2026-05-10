@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { pullRequestQueueSearchQualifier } from "../src/domain.js"
-import { viewCacheKey } from "../src/pullRequestViews.js"
+import { pullRequestQueueSearchQualifier, viewCacheKey } from "@ghui/core"
 
 describe("pullRequestQueueSearchQualifier", () => {
 	test("repository mode with repository → repo: qualifier", () => {

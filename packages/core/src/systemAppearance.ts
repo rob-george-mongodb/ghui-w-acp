@@ -1,4 +1,4 @@
-import type { ThemeTone } from "./ui/colors.js"
+import type { ThemeTone } from "./theme.js"
 
 export type SystemAppearance = ThemeTone
 

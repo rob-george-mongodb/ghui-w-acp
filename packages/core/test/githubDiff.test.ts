@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { pullRequestFilesToPatch } from "../src/services/GitHubService.ts"
-import { splitPatchFiles } from "../src/ui/diff.ts"
+import { pullRequestFilesToPatch, splitPatchFiles } from "@ghui/core"
 
 describe("pullRequestFilesToPatch", () => {
 	test("builds a parseable multi-file diff from paginated files API data", () => {

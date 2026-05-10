@@ -8,7 +8,10 @@ export interface ParsedStroke {
 const MODIFIERS = new Set(["ctrl", "shift", "meta"])
 
 export const parseKey = (input: string): ParsedStroke => {
-	const parts = input.split("+").map((part) => part.trim().toLowerCase()).filter(Boolean)
+	const parts = input
+		.split("+")
+		.map((part) => part.trim().toLowerCase())
+		.filter(Boolean)
 	if (parts.length === 0) throw new Error(`Empty key string: ${JSON.stringify(input)}`)
 
 	const key = parts[parts.length - 1]!
@@ -19,19 +22,14 @@ export const parseKey = (input: string): ParsedStroke => {
 	return { key, ctrl: mods.has("ctrl"), shift: mods.has("shift"), meta: mods.has("meta") }
 }
 
-export const parseBinding = (input: string): readonly ParsedStroke[] =>
-	input.trim().split(/\s+/).filter(Boolean).map(parseKey)
+export const parseBinding = (input: string): readonly ParsedStroke[] => input.trim().split(/\s+/).filter(Boolean).map(parseKey)
 
-export const strokeMatches = (a: ParsedStroke, b: ParsedStroke): boolean =>
-	a.key === b.key && a.ctrl === b.ctrl && a.shift === b.shift && a.meta === b.meta
+export const strokeMatches = (a: ParsedStroke, b: ParsedStroke): boolean => a.key === b.key && a.ctrl === b.ctrl && a.shift === b.shift && a.meta === b.meta
 
 export const sequenceMatches = (a: readonly ParsedStroke[], b: readonly ParsedStroke[]): boolean =>
 	a.length === b.length && a.every((stroke, index) => strokeMatches(stroke, b[index]!))
 
-export const sequenceStartsWith = (
-	sequence: readonly ParsedStroke[],
-	prefix: readonly ParsedStroke[],
-): boolean =>
+export const sequenceStartsWith = (sequence: readonly ParsedStroke[], prefix: readonly ParsedStroke[]): boolean =>
 	prefix.length <= sequence.length && prefix.every((stroke, index) => strokeMatches(stroke, sequence[index]!))
 
 export const formatStroke = (stroke: ParsedStroke): string => {
@@ -43,5 +41,4 @@ export const formatStroke = (stroke: ParsedStroke): string => {
 	return parts.join("+")
 }
 
-export const formatSequence = (sequence: readonly ParsedStroke[]): string =>
-	sequence.map(formatStroke).join(" ")
+export const formatSequence = (sequence: readonly ParsedStroke[]): string => sequence.map(formatStroke).join(" ")

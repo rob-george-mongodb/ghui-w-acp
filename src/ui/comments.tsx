@@ -1,6 +1,5 @@
 import { TextAttributes } from "@opentui/core"
-import { formatRelativeDate } from "../date.js"
-import type { DiffCommentSide } from "../domain.js"
+import { formatRelativeDate, type DiffCommentSide } from "@ghui/core"
 import { colors } from "./colors.js"
 import { fitCell, TextLine } from "./primitives.js"
 
