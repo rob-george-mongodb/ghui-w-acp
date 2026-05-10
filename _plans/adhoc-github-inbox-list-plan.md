@@ -2,7 +2,7 @@
 
 ## Status
 
-Revised after reviewer feedback.
+Ready for human signoff.
 
 ## Problem Summary
 
