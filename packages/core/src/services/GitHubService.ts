@@ -590,6 +590,7 @@ export class GitHubService extends Context.Service<
 	{
 		readonly listOpenPullRequests: (mode: PullRequestQueueMode, repository: string | null) => Effect.Effect<readonly PullRequestItem[], GitHubError>
 		readonly listOpenPullRequestPage: (input: ListPullRequestPageInput) => Effect.Effect<PullRequestPage, GitHubError>
+		/** @deprecated Not used by the UI — use getPullRequestDetails for single-PR hydration instead */
 		readonly listOpenPullRequestDetails: (mode: PullRequestQueueMode, repository: string | null) => Effect.Effect<readonly PullRequestItem[], GitHubError>
 		readonly getPullRequestDetails: (repository: string, number: number) => Effect.Effect<PullRequestItem, GitHubError>
 		readonly getAuthenticatedUser: () => Effect.Effect<string, GitHubError>

@@ -56,6 +56,7 @@ export * from "./observability.js"
 export * from "./pullRequestCache.js"
 export * from "./pullRequestLoad.js"
 export * from "./pullRequestViews.js"
+export { appendPullRequestPage, PR_FETCH_RETRIES } from "./prQueries.js"
 export * from "./themeStore.js"
 
 export { BrowserOpener } from "./services/BrowserOpener.js"

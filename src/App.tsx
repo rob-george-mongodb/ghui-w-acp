@@ -42,6 +42,8 @@ import {
 	requiresMarkReady,
 	visibleMergeKinds,
 	mergeCachedDetails,
+	appendPullRequestPage,
+	PR_FETCH_RETRIES,
 	type PullRequestLoad,
 	activePullRequestViews,
 	initialPullRequestView,
@@ -58,6 +60,7 @@ import {
 	type PullRequestCacheKey,
 	Clipboard,
 	GitHubService,
+	RateLimitError,
 	detectSystemAppearance,
 	fixedThemeConfig,
 	resolveThemeId,
@@ -258,7 +261,6 @@ interface AppProps {
 	readonly systemThemeGeneration?: number
 }
 
-const PR_FETCH_RETRIES = 6
 const FOCUS_RETURN_REFRESH_MIN_MS = 60_000
 const FOCUSED_IDLE_REFRESH_MS = 5 * 60_000
 const AUTO_REFRESH_JITTER_MS = 10_000
@@ -273,12 +275,6 @@ const DETAIL_PREFETCH_BEHIND = 1
 const DETAIL_PREFETCH_AHEAD = 3
 const DETAIL_PREFETCH_CONCURRENCY = 3
 const DETAIL_PREFETCH_DELAY_MS = 120
-const appendPullRequestPage = (existing: readonly PullRequestItem[], incoming: readonly PullRequestItem[]) => {
-	const seen = new Set(existing.map((pullRequest) => pullRequest.url))
-	const mergedIncoming = mergeCachedDetails(incoming, existing)
-	return [...existing, ...mergedIncoming.filter((pullRequest) => !seen.has(pullRequest.url))]
-}
-
 const cacheViewerFor = (view: PullRequestView, username: string | null) => (view._tag === "Repository" ? "anonymous" : username)
 
 const retryProgressAtom = Atom.make<RetryProgress>(initialRetryProgress).pipe(Atom.keepAlive)
@@ -318,13 +314,18 @@ const pullRequestsAtom = githubRuntime
 						pageSize: Math.min(pullRequestPageSize, appConfig.prFetchLimit),
 					})
 					.pipe(
-						Effect.tapError(() =>
-							Atom.update(retryProgressAtom, (current) =>
-								RetryProgress.Retrying({
-									attempt: Math.min(RetryProgress.$match(current, { Idle: () => 0, Retrying: ({ attempt }) => attempt }) + 1, PR_FETCH_RETRIES),
-									max: PR_FETCH_RETRIES,
-								}),
-							),
+						Effect.tapError((error) =>
+							Effect.gen(function* () {
+								if (error instanceof RateLimitError) {
+									yield* Atom.set(noticeAtom, `Rate limited by GitHub${error.retryAfterSeconds ? ` (retry after ${error.retryAfterSeconds}s)` : ""}`)
+								}
+								yield* Atom.update(retryProgressAtom, (current) =>
+									RetryProgress.Retrying({
+										attempt: Math.min(RetryProgress.$match(current, { Idle: () => 0, Retrying: ({ attempt }) => attempt }) + 1, PR_FETCH_RETRIES),
+										max: PR_FETCH_RETRIES,
+									}),
+								)
+							}),
 						),
 						Effect.retry({ times: PR_FETCH_RETRIES, schedule: Schedule.exponential("300 millis", 2) }),
 						Effect.tapError(() => Atom.set(retryProgressAtom, initialRetryProgress)),
