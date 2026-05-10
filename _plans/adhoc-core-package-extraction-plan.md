@@ -8,7 +8,7 @@ Ready for human signoff.
 
 The repo already has a large non-UI core hidden inside the TUI package: domain types, queue/view helpers, command models, Effect services, GitHub/cache integrations, theme/config persistence, and diff/search algorithms live alongside React/OpenTUI entrypoints. Today the published TUI package owns all of that code, so the reusable logic is hard to consume or evolve independently.
 
-The goal of this effort is to extract the UI-agnostic logic into a new workspace package, then have the existing TUI consume that package without changing user-visible behavior. For this plan, “UI-agnostic” means “not coupled to React/OpenTUI rendering or TUI component files”; it does **not** require making the extracted package runtime-agnostic on day one. Bun-based services can move if they are not TUI-specific.
+The goal of this effort is to extract the UI-agnostic logic into a new workspace package, then have the existing TUI consume that package without changing user-visible behavior. For this plan, “UI-agnostic” means “not coupled to React/OpenTUI rendering or TUI component files”; it does **not** require making the extracted package runtime-agnostic on day one. Bun-based services can move if they are not TUI-specific, though we should leave room for a future Bun shim/adapter boundary.
 
 The plan below assumes we create a private internal workspace package first (`packages/core`, likely named `@ghui/core`) and keep separate npm publication out of scope for the first pass. That matches the repo’s current workspace and packaging model and minimizes release risk.
 
@@ -36,10 +36,10 @@ The following modules are already cleanly separated from React/OpenTUI rendering
 
 - `src/themeConfig.ts` is pure config logic, but it imports theme identities/helpers from `src/ui/colors.js` (`src/themeConfig.ts:1-24`).
 - `src/themeStore.ts` is config persistence logic, but it imports `ThemeId` from `src/ui/colors.js` and `DiffWhitespaceMode` from `src/ui/diff.js` (`src/themeStore.ts:5-7`) and uses Bun file I/O (`src/themeStore.ts:32-40`).
-- `src/systemAppearance.ts` is OS appearance detection, but it imports `ThemeTone` from `src/ui/colors.js` (`src/systemAppearance.ts:1-3`) and uses `Bun.spawn` (`src/systemAppearance.ts:5-13`).
+- `src/systemAppearance.ts` is OS appearance detection, but it imports `ThemeTone` from `src/ui/colors.js` (`src/systemAppearance.ts:1-3`) and uses `Bun.spawn` (`src/systemAppearance.ts:5-13`). These are good extraction targets, but they are secondary to the core diff/theme seam cuts and should not block the main package split if they turn out to be annoyingly coupled.
 - `src/ui/diff.ts` mixes extractable diff types/parsers (`src/ui/diff.ts:6-58`, `src/ui/diff.ts:81-411`, `src/ui/diff.ts:553-607`) with OpenTUI/style/layout logic (`src/ui/diff.ts:60-79`, `src/ui/diff.ts:609-703`).
 - `src/ui/colors.ts` mixes theme identity/metadata (`src/ui/colors.ts:1-30`, `src/ui/colors.ts:1294-1362`) with the mutable rendering palette singleton used directly by the TUI (`src/ui/colors.ts:1340-1375`).
-- Theme metadata is used outside rendering, but the full palette-bearing `themeDefinitions` list is still used by the TUI for notices and theme-picker swatches (`src/App.tsx:2524-2525`, `src/ui/modals.tsx:1295-1373`), so the split must keep palette application in the TUI shell.
+- Theme metadata is used outside rendering, but the full palette-bearing `themeDefinitions` list is still used by the TUI for notices and theme-picker swatches (`src/App.tsx:2524-2525`, `src/ui/modals.tsx:1295-1373`), so the split must keep palette application in the TUI shell. Longer term, we should expect another app surface to consume shared theme metadata and provide its own palette application strategy.
 - `src/ui/modals.tsx` contains pure search helpers inside a component file: `filterLabels` (`src/ui/modals.tsx:143-147`) and `filterChangedFiles` (`src/ui/modals.tsx:294-307`).
 - `src/ui/commentEditor.ts` and `src/ui/singleLineInput.ts` are pure editing/input helpers despite their location (`src/ui/commentEditor.ts:1-130`, `src/ui/singleLineInput.ts:1-26`).
 
@@ -85,6 +85,7 @@ Three notes for this move:
 1. `CommandRunner` and `CacheService` are Bun-specific today (`src/services/CommandRunner.ts:27-30`, `src/services/CacheService.ts:1-4`), but they are still non-UI and can live in the core package for v1.
 2. `GitHubService` currently imports the root `config` singleton to get `prFetchLimit` (`src/services/GitHubService.ts:683-684`), and it also depends on `mergeActionCliArgs` from `mergeActions` (`src/services/GitHubService.ts:21`). Move `GitHubService` and `mergeActions` together, with the config cleanup landing before or during that move.
 3. `appCommands.ts` should move only **after** Step 3b lands the diff-mode types in core, because its only remaining UI coupling is the type import from `src/ui/diff.ts` (`src/appCommands.ts:4`).
+4. When these files move, use filesystem moves (`mv` or equivalent scripted moves), then update imports/types in place. Do **not** re-create the files from scratch by hand; preserving file history and reducing agent drift is part of the migration plan.
 
 ### 3. Cut the mixed modules at the actual seam, not the directory seam
 
@@ -119,6 +120,13 @@ These are currently mixed into `src/ui/diff.ts` alongside OpenTUI syntax-color a
 
 Keep render/layout-specific helpers in the TUI package, especially anything that depends on syntax styling, viewport width, or `Bun.stringWidth` for TUI layout (`src/ui/diff.ts:60-79`, `src/ui/diff.ts:609-703`).
 
+The main blockers to call out explicitly are:
+
+- `splitPatchFiles` currently reaches into `@opentui/core` for `pathToFiletype`, so it cannot move unchanged (`src/ui/diff.ts:1`, `src/ui/diff.ts:308-323`).
+- `createDiffSyntaxStyle` depends on `parseColor`, `SyntaxStyle`, and the mutable TUI palette singleton, so it must stay TUI-side (`src/ui/diff.ts:1`, `src/ui/diff.ts:60-79`).
+- `patchRenderableLineCount`, `buildStackedDiffFiles`, and related layout helpers depend on viewport width and `Bun.stringWidth`, which are presentation concerns even though the math is pure-looking (`src/ui/diff.ts:609-703`, `src/ui/diff.ts:330-346`).
+- The practical extraction line is therefore: move diff modes, patch parsing, whitespace normalization, stats, keys, and anchor-navigation helpers first; keep syntax styling and render-layout helpers in the TUI shell until a separate renderer-neutral abstraction is justified.
+
 Make one concrete API change during the split: keep `DiffFilePatch.filetype` as plain `string | undefined` (`src/ui/diff.ts:18-22`), but change `splitPatchFiles` so it no longer imports `pathToFiletype` from `@opentui/core` (`src/ui/diff.ts:1`, `src/ui/diff.ts:308-323`). Instead, core should accept an optional `resolveFiletype(name)` callback (defaulting to `undefined`) and the TUI should pass `pathToFiletype` when it wants syntax highlighting. Once that lands, move `appCommands.ts` and the `DiffWhitespaceMode` consumer in `themeStore.ts` onto the core diff module.
 
 #### 3c. Extract pure search/editor helpers from component files
@@ -126,10 +134,8 @@ Make one concrete API change during the split: keep `DiffFilePatch.filetype` as 
 Move the following into core utility modules:
 
 - `filterLabels` and `filterChangedFiles` from `src/ui/modals.tsx:143-147` and `src/ui/modals.tsx:294-307`
-- `commentEditor` primitives from `src/ui/commentEditor.ts:1-130`
-- single-line input helpers from `src/ui/singleLineInput.ts:1-26`
 
-This keeps the new package focused on reusable logic rather than file layout accidents.
+Leave `src/ui/commentEditor.ts` and `src/ui/singleLineInput.ts` in the TUI package for now. They are pure helper code, but they are still part of the TUI interaction model and are not necessary to prove out the core-package extraction.
 
 ### 4. Replace the config singleton with explicit config resolution
 
@@ -214,19 +220,19 @@ Because the current root scripts and TS config ignore `packages/*` (`package.jso
 ## Risks / Open Questions
 
 1. **Internal package or public package?**
-   - This plan assumes private/internal first because the current publish pipeline only knows how to ship `@kitlangton/ghui` and platform binaries (`dev/build-npm-packages.ts:81-107`). If a separately published `@ghui/core` is desired, that needs additional build, changeset, and release-workflow work.
+   - Decided: internal-only for this pass.
 
 2. **Should theme persistence and system appearance live in core in v1?**
-   - They are UI-agnostic but Bun-specific (`src/themeStore.ts:32-40`, `src/systemAppearance.ts:5-13`). Lean: yes, move them after extracting theme and diff types so the TUI shell only owns rendering concerns.
+   - Decided: yes, if they are not disproportionately painful after the theme/diff type seam cuts land.
 
 3. **Do we need a deeper App/runtime factory refactor now?**
-   - `App.tsx` still does substantial module-scope setup (`src/App.tsx:174-197`, `src/App.tsx:274-338`). Lean: no full atom-factory rewrite in this pass; add only a small core layer helper and keep the TUI shell otherwise intact.
+   - Decided: no. Keep the current TUI shell structure and add only the smaller core layer helper described above.
 
 4. **How much of the pure logic under `src/ui/` must move in the first pass?**
-   - `commentEditor`, `singleLineInput`, `filterLabels`, and `filterChangedFiles` are good fits, but they are not blockers for the main service/domain extraction. Lean: move them if the seam cuts are already open; otherwise avoid ballooning the change.
+   - Decided: include the filter/search helpers from `src/ui/modals.tsx`, but leave the TUI input/editor helpers where they are.
 
 5. **Should the core package stay on a single top-level barrel or grow subpath exports immediately?**
-   - Lean: one curated barrel for v1 because the package is internal-first. Revisit subpath exports only if the TUI shell starts depending on too much surface area.
+   - Decided: a single curated top-level barrel for v1.
 
 ## Relevant Files / Research References
 
