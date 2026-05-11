@@ -112,6 +112,7 @@ export {
 	classifyInboxSection,
 } from "./inbox.js"
 
+export { ACPService, ACPError } from "./services/ACPService.js"
 export { ReviewWatcher } from "./services/ReviewWatcher.js"
 export { WorktreeService, WorktreeError } from "./services/WorktreeService.js"
 

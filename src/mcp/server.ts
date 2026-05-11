@@ -14,6 +14,19 @@ const PR_KEY = process.env.GHUI_PR_KEY
 const SESSION_ID = process.env.GHUI_SESSION_ID
 const CACHE_PATH = process.env.GHUI_CACHE_PATH
 
+const getSessionId = (): string => {
+	if (SESSION_ID) return SESSION_ID
+	try {
+		const idFile = `${REVIEW_DIR}/.session-id`
+		if (existsSync(idFile)) {
+			return readFileSync(idFile, "utf8").trim()
+		}
+	} catch {
+		// ignore
+	}
+	return randomUUID()
+}
+
 const tools = [
 	{
 		name: "report_finding",
@@ -129,7 +142,7 @@ export const runMcpServer = async () => {
 				}
 			}
 
-			const sessionId = SESSION_ID ?? "unknown"
+			const sessionId = getSessionId()
 			const canonicalName = `report-${sessionId}.md`
 			const canonicalPath = `${REVIEW_DIR}/${canonicalName}`
 
