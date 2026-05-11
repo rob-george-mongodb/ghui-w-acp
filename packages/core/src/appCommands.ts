@@ -40,6 +40,10 @@ interface AppCommandActions {
 	readonly openCloseModal: () => void
 	readonly openPullRequestInBrowser: () => void
 	readonly copyPullRequestMetadata: () => void
+	readonly openInitiateReview: () => void
+	readonly openFindingsPanel: () => void
+	readonly openAskAIPanel: () => void
+	readonly openSessionViewerPanel: () => void
 	readonly quit: () => void
 }
 
@@ -444,6 +448,38 @@ export const buildAppCommands = ({
 			shortcut: "y",
 			keywords: ["clipboard", "url", "title"],
 			run: actions.copyPullRequestMetadata,
+		}),
+		forSelected({
+			id: "acp.initiate-review",
+			title: "Initiate AI review",
+			scope: "Pull request",
+			shortcut: "i",
+			keywords: ["ai", "review", "agent", "acp"],
+			run: actions.openInitiateReview,
+		}),
+		forSelected({
+			id: "acp.findings-panel",
+			title: "View findings",
+			scope: "Pull request",
+			shortcut: "f",
+			keywords: ["findings", "comments", "ai", "review"],
+			run: actions.openFindingsPanel,
+		}),
+		forSelected({
+			id: "acp.ask-ai",
+			title: "Ask AI",
+			scope: "Pull request",
+			shortcut: "a",
+			keywords: ["chat", "ai", "ask", "acp"],
+			run: actions.openAskAIPanel,
+		}),
+		forSelected({
+			id: "acp.session-viewer",
+			title: "View sessions",
+			scope: "Pull request",
+			shortcut: "v",
+			keywords: ["sessions", "transcript", "ai", "review"],
+			run: actions.openSessionViewerPanel,
 		}),
 		defineCommand({
 			id: "app.quit",

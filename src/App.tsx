@@ -60,6 +60,12 @@ import {
 	type PullRequestCacheKey,
 	Clipboard,
 	GitHubService,
+	ACPService,
+	WorktreeService,
+	type ReviewFinding,
+	type ReviewSession,
+	type SessionMessage,
+	type FindingStatus,
 	RateLimitError,
 	detectSystemAppearance,
 	fixedThemeConfig,
@@ -179,10 +185,19 @@ import {
 	type PullRequestStateModalState,
 	type SubmitReviewModalState,
 	type ThemeModalState,
+	initialInitiateReviewModalState,
+	initialFindingEditModalState,
+	initialHumanCommentModalState,
+	initialPostFindingsModalState,
+	type InitiateReviewModalState,
+	type FindingEditModalState,
+	type HumanCommentModalState,
+	type PostFindingsModalState,
 } from "./ui/modals.js"
 import { groupBy, pullRequestMetadataText } from "./ui/pullRequests.js"
 import { quotedReplyBody } from "./ui/comments.js"
 import { CommentsPane, commentsViewRowCount, orderCommentsForDisplay } from "./ui/CommentsPane.js"
+import { FindingsPanel, AskAIPanel, SessionViewerPanel, InitiateReviewModal, FindingEditModal, HumanCommentModal, PostFindingsModal } from "./ui/acpModals.js"
 import { PullRequestDiffPane } from "./ui/PullRequestDiffPane.js"
 import { buildPullRequestListRows, pullRequestListRowIndex, PullRequestList } from "./ui/PullRequestList.js"
 import { editSingleLineInput, isSingleLineInputKey, printableKeyText, singleLineText } from "./ui/singleLineInput.js"
@@ -389,6 +404,20 @@ const repoMergeMethodsCacheAtom = Atom.make<Record<string, RepositoryMergeMethod
 const lastUsedMergeMethodAtom = Atom.make<Record<string, PullRequestMergeMethod>>({}).pipe(Atom.keepAlive)
 const pullRequestOverridesAtom = Atom.make<Record<string, PullRequestItem>>({}).pipe(Atom.keepAlive)
 const recentlyCompletedPullRequestsAtom = Atom.make<Record<string, PullRequestItem>>({}).pipe(Atom.keepAlive)
+const findingsPanelActiveAtom = Atom.make(false)
+const findingsPanelSelectionAtom = Atom.make(0)
+const findingsPanelFindingsAtom = Atom.make<readonly ReviewFinding[]>([])
+const askAIPanelActiveAtom = Atom.make(false)
+const askAIPanelSessionIdAtom = Atom.make<string | null>(null)
+const askAIPanelInputAtom = Atom.make("")
+const askAIPanelCursorAtom = Atom.make(0)
+const askAIPanelLoadingAtom = Atom.make(false)
+const askAIPanelMessagesAtom = Atom.make<readonly SessionMessage[]>([])
+const sessionViewerPanelActiveAtom = Atom.make(false)
+const sessionViewerPanelSelectionAtom = Atom.make(0)
+const sessionViewerPanelSessionsAtom = Atom.make<readonly ReviewSession[]>([])
+const sessionViewerExpandedSessionIdAtom = Atom.make<string | null>(null)
+const sessionViewerMessagesAtom = Atom.make<readonly SessionMessage[]>([])
 const usernameAtom = githubRuntime.atom(GitHubService.use((github) => github.getAuthenticatedUser())).pipe(Atom.keepAlive)
 
 const pullRequestLoadAtom = Atom.make((get) => {
@@ -553,6 +582,21 @@ const submitPullRequestReviewAtom = githubRuntime.fn<SubmitPullRequestReviewInpu
 const copyToClipboardAtom = githubRuntime.fn<string>()((text) => Clipboard.use((clipboard) => clipboard.copy(text)))
 const openInBrowserAtom = githubRuntime.fn<PullRequestItem>()((pullRequest) => BrowserOpener.use((browser) => browser.openPullRequest(pullRequest)))
 const openUrlAtom = githubRuntime.fn<string>()((url) => BrowserOpener.use((browser) => browser.openUrl(url)))
+const createWorktreeAtom = githubRuntime.fn<PullRequestItem>()((pr) => WorktreeService.use((wt) => wt.create(pr)))
+const startReviewSessionAtom = githubRuntime.fn<{ readonly pr: PullRequestItem; readonly worktreePath: string }>()((input) =>
+	ACPService.use((acp) => acp.startReviewSession(input.pr, input.worktreePath)),
+)
+const sendAIPromptAtom = githubRuntime.fn<{ readonly sessionId: string; readonly text: string }>()((input) => ACPService.use((acp) => acp.sendPrompt(input.sessionId, input.text)))
+const listFindingsAtom = githubRuntime.fn<string>()((prKey) => CacheService.use((cache) => cache.listFindings(prKey)))
+const updateFindingStatusAtom = githubRuntime.fn<{ readonly id: string; readonly status: FindingStatus; readonly modifiedBody?: string }>()((input) =>
+	CacheService.use((cache) => cache.updateFindingStatus(input.id, input.status, input.modifiedBody)),
+)
+const markFindingPostedAtom = githubRuntime.fn<{ readonly id: string; readonly url: string }>()((input) =>
+	CacheService.use((cache) => cache.markFindingPosted(input.id, input.url)),
+)
+const upsertFindingAtom = githubRuntime.fn<ReviewFinding>()((finding) => CacheService.use((cache) => cache.upsertFinding(finding)))
+const listSessionsAtom = githubRuntime.fn<string>()((prKey) => CacheService.use((cache) => cache.listSessions(prKey)))
+const listMessagesAtom = githubRuntime.fn<string>()((sessionId) => CacheService.use((cache) => cache.listMessages(sessionId)))
 
 const pickInitialMergeMethod = (allowed: RepositoryMergeMethods | null, preferred: PullRequestMergeMethod | undefined): PullRequestMergeMethod => {
 	if (!allowed) return preferred ?? pullRequestMergeMethods[0]
@@ -757,6 +801,20 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	const setPullRequestCommentsLoaded = useAtomSet(pullRequestCommentsLoadedAtom)
 	const setPullRequestDiffCache = useAtomSet(pullRequestDiffCacheAtom)
 	const [activeModal, setActiveModal] = useAtom(activeModalAtom)
+	const [findingsPanelActive, setFindingsPanelActive] = useAtom(findingsPanelActiveAtom)
+	const [findingsPanelSelection, setFindingsPanelSelection] = useAtom(findingsPanelSelectionAtom)
+	const [findingsPanelFindings, setFindingsPanelFindings] = useAtom(findingsPanelFindingsAtom)
+	const [askAIPanelActive, setAskAIPanelActive] = useAtom(askAIPanelActiveAtom)
+	const [askAIPanelSessionId, setAskAIPanelSessionId] = useAtom(askAIPanelSessionIdAtom)
+	const [askAIPanelInput, setAskAIPanelInput] = useAtom(askAIPanelInputAtom)
+	const [askAIPanelCursor, setAskAIPanelCursor] = useAtom(askAIPanelCursorAtom)
+	const [askAIPanelLoading, setAskAIPanelLoading] = useAtom(askAIPanelLoadingAtom)
+	const [askAIPanelMessages, setAskAIPanelMessages] = useAtom(askAIPanelMessagesAtom)
+	const [sessionViewerPanelActive, setSessionViewerPanelActive] = useAtom(sessionViewerPanelActiveAtom)
+	const [sessionViewerPanelSelection, setSessionViewerPanelSelection] = useAtom(sessionViewerPanelSelectionAtom)
+	const [sessionViewerPanelSessions, setSessionViewerPanelSessions] = useAtom(sessionViewerPanelSessionsAtom)
+	const [sessionViewerExpandedSessionId, setSessionViewerExpandedSessionId] = useAtom(sessionViewerExpandedSessionIdAtom)
+	const [sessionViewerMessages, setSessionViewerMessages] = useAtom(sessionViewerMessagesAtom)
 	const [themeConfig, setThemeConfig] = useAtom(themeConfigAtom)
 	const [systemAppearance, setSystemAppearance] = useAtom(systemAppearanceAtom)
 	const [themeId, setThemeId] = useAtom(themeIdAtom)
@@ -773,6 +831,10 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	const themeModalActive = Modal.$is("Theme")(activeModal)
 	const commandPaletteActive = Modal.$is("CommandPalette")(activeModal)
 	const openRepositoryModalActive = Modal.$is("OpenRepository")(activeModal)
+	const initiateReviewModalActive = Modal.$is("InitiateReview")(activeModal)
+	const findingEditModalActive = Modal.$is("FindingEdit")(activeModal)
+	const humanCommentModalActive = Modal.$is("HumanComment")(activeModal)
+	const postFindingsModalActive = Modal.$is("PostFindings")(activeModal)
 	const labelModal: LabelModalState = labelModalActive ? activeModal : initialLabelModalState
 	const closeModal: CloseModalState = closeModalActive ? activeModal : initialCloseModalState
 	const pullRequestStateModal: PullRequestStateModalState = pullRequestStateModalActive ? activeModal : initialPullRequestStateModalState
@@ -785,6 +847,10 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	const themeModal: ThemeModalState = themeModalActive ? activeModal : initialThemeModalState
 	const commandPalette: CommandPaletteState = commandPaletteActive ? activeModal : initialCommandPaletteState
 	const openRepositoryModal: OpenRepositoryModalState = openRepositoryModalActive ? activeModal : initialOpenRepositoryModalState
+	const initiateReviewModal: InitiateReviewModalState = initiateReviewModalActive ? activeModal : initialInitiateReviewModalState
+	const findingEditModal: FindingEditModalState = findingEditModalActive ? activeModal : initialFindingEditModalState
+	const humanCommentModal: HumanCommentModalState = humanCommentModalActive ? activeModal : initialHumanCommentModalState
+	const postFindingsModal: PostFindingsModalState = postFindingsModalActive ? activeModal : initialPostFindingsModalState
 	const makeModalSetter =
 		<Tag extends Exclude<ModalTag, "None">>(tag: Tag) =>
 		(next: ModalState<Tag> | ((prev: ModalState<Tag>) => ModalState<Tag>)) =>
@@ -809,6 +875,10 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	const setThemeModal = makeModalSetter("Theme")
 	const setCommandPalette = makeModalSetter("CommandPalette")
 	const setOpenRepositoryModal = makeModalSetter("OpenRepository")
+	const setInitiateReviewModal = makeModalSetter("InitiateReview")
+	const setFindingEditModal = makeModalSetter("FindingEdit")
+	const setHumanCommentModal = makeModalSetter("HumanComment")
+	const setPostFindingsModal = makeModalSetter("PostFindings")
 	const themeIdRef = useRef(themeId)
 	const themeConfigRef = useRef(themeConfig)
 	const systemAppearanceRef = useRef(systemAppearance)
@@ -856,6 +926,15 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 	const copyToClipboard = useAtomSet(copyToClipboardAtom, { mode: "promise" })
 	const openInBrowser = useAtomSet(openInBrowserAtom, { mode: "promise" })
 	const openUrl = useAtomSet(openUrlAtom, { mode: "promise" })
+	const createWorktree = useAtomSet(createWorktreeAtom, { mode: "promise" })
+	const startReviewSession = useAtomSet(startReviewSessionAtom, { mode: "promise" })
+	const sendAIPrompt = useAtomSet(sendAIPromptAtom, { mode: "promise" })
+	const listFindings = useAtomSet(listFindingsAtom, { mode: "promise" })
+	const updateFindingStatus = useAtomSet(updateFindingStatusAtom, { mode: "promise" })
+	const markFindingPosted = useAtomSet(markFindingPostedAtom, { mode: "promise" })
+	const upsertFinding = useAtomSet(upsertFindingAtom, { mode: "promise" })
+	const listSessions = useAtomSet(listSessionsAtom, { mode: "promise" })
+	const listMessages = useAtomSet(listMessagesAtom, { mode: "promise" })
 	const terminalWidth = width ?? 100
 	const terminalHeight = height ?? 24
 	const contentWidth = Math.max(1, terminalWidth)
@@ -2954,6 +3033,274 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 		filterMode,
 	])
 
+	const acpAgentName = (() => {
+		const agents = appConfig.jsonConfig.acp?.agents ?? []
+		const defaultName = appConfig.jsonConfig.acp?.defaultAgent
+		return (agents.find((a) => a.name === defaultName) ?? agents[0])?.name ?? "opencode"
+	})()
+
+	const openInitiateReview = () => {
+		if (!selectedPullRequest) return
+		setActiveModal(
+			Modal.InitiateReview({
+				prRepository: selectedPullRequest.repository,
+				prNumber: selectedPullRequest.number,
+				prTitle: selectedPullRequest.title,
+				loading: false,
+				error: null,
+			}),
+		)
+	}
+
+	const confirmInitiateReview = () => {
+		if (!selectedPullRequest) return
+		setInitiateReviewModal((current) => ({ ...current, loading: true, error: null }))
+		void createWorktree(selectedPullRequest)
+			.then((worktree) => startReviewSession({ pr: selectedPullRequest, worktreePath: worktree.worktreePath }))
+			.then((session) => {
+				setAskAIPanelSessionId(session.sessionId)
+				closeActiveModal()
+				flashNotice(`Review started: session ${session.sessionId.slice(0, 8)}`)
+			})
+			.catch((error: unknown) => {
+				setInitiateReviewModal((current) => ({ ...current, loading: false, error: errorMessage(error) }))
+			})
+	}
+
+	const openFindingsPanelForPR = () => {
+		if (!selectedPullRequest) return
+		const prKey = `${selectedPullRequest.repository}#${selectedPullRequest.number}`
+		void listFindings(prKey)
+			.then((findings) => {
+				setFindingsPanelFindings(findings)
+				setFindingsPanelSelection(0)
+				setFindingsPanelActive(true)
+				setCommentsViewActive(false)
+				setDiffFullView(false)
+				setDetailFullView(false)
+				setAskAIPanelActive(false)
+				setSessionViewerPanelActive(false)
+			})
+			.catch((error: unknown) => {
+				flashNotice(errorMessage(error))
+			})
+	}
+
+	const closeFindingsPanel = () => setFindingsPanelActive(false)
+
+	const openAskAIPanelForPR = () => {
+		if (!selectedPullRequest) return
+		setAskAIPanelActive(true)
+		setCommentsViewActive(false)
+		setDiffFullView(false)
+		setDetailFullView(false)
+		setFindingsPanelActive(false)
+		setSessionViewerPanelActive(false)
+		if (askAIPanelSessionId) {
+			void listMessages(askAIPanelSessionId)
+				.then((messages) => setAskAIPanelMessages(messages))
+				.catch(() => {})
+		}
+	}
+
+	const closeAskAIPanel = () => {
+		setAskAIPanelActive(false)
+	}
+
+	const openSessionViewerPanelForPR = () => {
+		if (!selectedPullRequest) return
+		const prKey = `${selectedPullRequest.repository}#${selectedPullRequest.number}`
+		void listSessions(prKey)
+			.then((sessions) => {
+				setSessionViewerPanelSessions(sessions)
+				setSessionViewerPanelSelection(0)
+				setSessionViewerExpandedSessionId(null)
+				setSessionViewerMessages([])
+				setSessionViewerPanelActive(true)
+				setCommentsViewActive(false)
+				setDiffFullView(false)
+				setDetailFullView(false)
+				setFindingsPanelActive(false)
+				setAskAIPanelActive(false)
+			})
+			.catch((error: unknown) => {
+				flashNotice(errorMessage(error))
+			})
+	}
+
+	const closeSessionViewerPanel = () => setSessionViewerPanelActive(false)
+
+	const acceptSelectedFinding = () => {
+		const finding = findingsPanelFindings[findingsPanelSelection]
+		if (!finding) return
+		void updateFindingStatus({ id: finding.id, status: "accepted" })
+			.then(() => setFindingsPanelFindings((current) => current.map((f) => (f.id === finding.id ? { ...f, status: "accepted" } : f))))
+			.catch((error: unknown) => flashNotice(errorMessage(error)))
+	}
+
+	const rejectSelectedFinding = () => {
+		const finding = findingsPanelFindings[findingsPanelSelection]
+		if (!finding) return
+		void updateFindingStatus({ id: finding.id, status: "rejected" })
+			.then(() => setFindingsPanelFindings((current) => current.map((f) => (f.id === finding.id ? { ...f, status: "rejected" } : f))))
+			.catch((error: unknown) => flashNotice(errorMessage(error)))
+	}
+
+	const openFindingEditModalForSelected = () => {
+		const finding = findingsPanelFindings[findingsPanelSelection]
+		if (!finding) return
+		setActiveModal(
+			Modal.FindingEdit({
+				findingId: finding.id,
+				body: finding.body,
+				cursor: 0,
+				running: false,
+				error: null,
+			}),
+		)
+	}
+
+	const saveFindingEdit = () => {
+		const finding = findingsPanelFindings.find((f) => f.id === findingEditModal.findingId)
+		if (!finding) {
+			closeActiveModal()
+			return
+		}
+		setFindingEditModal((current) => ({ ...current, running: true, error: null }))
+		const updated: ReviewFinding = { ...finding, status: "modified", modifiedBody: findingEditModal.body, updatedAt: new Date() }
+		void upsertFinding(updated)
+			.then(() => {
+				setFindingsPanelFindings((current) => current.map((f) => (f.id === updated.id ? updated : f)))
+				closeActiveModal()
+			})
+			.catch((error: unknown) => setFindingEditModal((current) => ({ ...current, running: false, error: errorMessage(error) })))
+	}
+
+	const editFinding = (state: { body: string; cursor: number }, transform: (state: { body: string; cursor: number }) => { body: string; cursor: number }) => {
+		const next = transform(state)
+		setFindingEditModal((current) => ({ ...current, body: next.body, cursor: next.cursor }))
+	}
+
+	const editHumanComment = (state: { body: string; cursor: number }, transform: (state: { body: string; cursor: number }) => { body: string; cursor: number }) => {
+		const next = transform(state)
+		setHumanCommentModal((current) => ({ ...current, body: next.body, cursor: next.cursor }))
+	}
+
+	const openHumanCommentModal = () => {
+		if (!selectedPullRequest) return
+		const prKey = `${selectedPullRequest.repository}#${selectedPullRequest.number}`
+		setActiveModal(Modal.HumanComment({ prKey, body: "", cursor: 0, running: false, error: null }))
+	}
+
+	const saveHumanComment = () => {
+		if (!selectedPullRequest) return
+		setHumanCommentModal((current) => ({ ...current, running: true, error: null }))
+		const prKey = humanCommentModal.prKey
+		const finding: ReviewFinding = {
+			id: globalThis.crypto.randomUUID(),
+			prKey,
+			sessionId: null,
+			headRefOid: selectedPullRequest.headRefOid,
+			source: "human",
+			filePath: null,
+			lineStart: null,
+			lineEnd: null,
+			diffSide: null,
+			title: null,
+			body: humanCommentModal.body,
+			severity: null,
+			status: "pending_review",
+			modifiedBody: null,
+			postedUrl: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		}
+		void upsertFinding(finding)
+			.then(() => {
+				closeActiveModal()
+				flashNotice("Comment saved")
+			})
+			.catch((error: unknown) => setHumanCommentModal((current) => ({ ...current, running: false, error: errorMessage(error) })))
+	}
+
+	const openPostFindingsModal = () => {
+		if (!selectedPullRequest) return
+		const prKey = `${selectedPullRequest.repository}#${selectedPullRequest.number}`
+		const postable = findingsPanelFindings.filter((f) => f.status === "accepted" || f.status === "modified")
+		const staleness = postable.some((f) => f.headRefOid !== selectedPullRequest.headRefOid)
+		setActiveModal(Modal.PostFindings({ prKey, selectedIndex: 0, running: false, error: null, staleness }))
+	}
+
+	const confirmPostFindings = () => {
+		if (!selectedPullRequest) return
+		setPostFindingsModal((current) => ({ ...current, running: true, error: null }))
+		const postable = findingsPanelFindings.filter((f) => f.status === "accepted" || f.status === "modified")
+		const postSequential = async () => {
+			for (const finding of postable) {
+				const body = finding.modifiedBody ?? finding.body
+				let url: string | null
+				if (finding.filePath && finding.lineStart !== null) {
+					const startLine = finding.lineEnd && finding.lineEnd !== finding.lineStart ? (finding.lineStart ?? undefined) : undefined
+					const result = await createPullRequestComment({
+						repository: selectedPullRequest.repository,
+						number: selectedPullRequest.number,
+						commitId: finding.headRefOid,
+						path: finding.filePath,
+						line: finding.lineEnd ?? finding.lineStart,
+						...(startLine !== undefined ? { startLine } : {}),
+						side: finding.diffSide ?? "RIGHT",
+						body,
+					})
+					url = result.url
+				} else {
+					const result = await createPullRequestIssueComment({
+						repository: selectedPullRequest.repository,
+						number: selectedPullRequest.number,
+						body,
+					})
+					url = result.url
+				}
+				if (url) {
+					await markFindingPosted({ id: finding.id, url })
+					setFindingsPanelFindings((current) => current.map((f) => (f.id === finding.id ? { ...f, postedUrl: url } : f)))
+				}
+			}
+			closeActiveModal()
+			flashNotice(`Posted ${postable.length} finding${postable.length === 1 ? "" : "s"}`)
+		}
+		void postSequential().catch((error: unknown) => setPostFindingsModal((current) => ({ ...current, running: false, error: errorMessage(error) })))
+	}
+
+	const submitAIPrompt = () => {
+		if (!askAIPanelSessionId || askAIPanelLoading) return
+		const text = askAIPanelInput.trim()
+		if (!text) return
+		setAskAIPanelLoading(true)
+		setAskAIPanelInput("")
+		setAskAIPanelCursor(0)
+		void sendAIPrompt({ sessionId: askAIPanelSessionId, text })
+			.then(() => (askAIPanelSessionId ? listMessages(askAIPanelSessionId) : Promise.resolve([])))
+			.then((messages) => setAskAIPanelMessages(messages))
+			.catch((error: unknown) => flashNotice(errorMessage(error)))
+			.finally(() => setAskAIPanelLoading(false))
+	}
+
+	const selectSessionViewerSession = () => {
+		const session = sessionViewerPanelSessions[sessionViewerPanelSelection]
+		if (!session) return
+		if (sessionViewerExpandedSessionId === session.sessionId) {
+			setSessionViewerExpandedSessionId(null)
+			setSessionViewerMessages([])
+			return
+		}
+		void listMessages(session.sessionId)
+			.then((messages) => {
+				setSessionViewerMessages(messages)
+				setSessionViewerExpandedSessionId(session.sessionId)
+			})
+			.catch((error: unknown) => flashNotice(errorMessage(error)))
+	}
+
 	const appCommands: readonly AppCommand[] = buildAppCommands({
 		pullRequestStatus,
 		filterQuery,
@@ -3038,6 +3385,10 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 				if (selectedPullRequest) openSelectedPullRequestInBrowser(selectedPullRequest)
 			},
 			copyPullRequestMetadata: copySelectedPullRequestMetadata,
+			openInitiateReview,
+			openFindingsPanel: openFindingsPanelForPR,
+			openAskAIPanel: openAskAIPanelForPR,
+			openSessionViewerPanel: openSessionViewerPanelForPR,
 			quit: () => renderer.destroy(),
 		},
 	})
@@ -3186,6 +3537,18 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 			closeActiveModal()
 			return
 		}
+		if (findingsPanelActive) {
+			closeFindingsPanel()
+			return
+		}
+		if (askAIPanelActive) {
+			closeAskAIPanel()
+			return
+		}
+		if (sessionViewerPanelActive) {
+			closeSessionViewerPanel()
+			return
+		}
 		runCommandById("app.quit")
 	}
 
@@ -3203,6 +3566,13 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 		commentModalActive,
 		deleteCommentModalActive,
 		commandPaletteActive,
+		initiateReviewModalActive,
+		findingEditModalActive,
+		humanCommentModalActive,
+		postFindingsModalActive,
+		findingsPanelActive,
+		askAIPanelActive,
+		sessionViewerPanelActive,
 		filterMode,
 		diffFullView,
 		detailFullView,
@@ -3215,6 +3585,9 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 			submitReviewModalActive ||
 			labelModalActive ||
 			filterMode ||
+			findingEditModalActive ||
+			humanCommentModalActive ||
+			askAIPanelActive ||
 			(themeModalActive && themeModal.filterMode),
 		closeModal: {
 			closeModal: closeActiveModal,
@@ -3290,6 +3663,162 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 		openRepositoryModal: {
 			closeModal: closeActiveModal,
 			openFromInput: openRepositoryFromInput,
+		},
+		initiateReviewModal: {
+			closeModal: closeActiveModal,
+			confirmInitiate: confirmInitiateReview,
+		},
+		findingEditModal: {
+			closeModal: closeActiveModal,
+			save: saveFindingEdit,
+			insertNewline: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, (s) => insertText(s, "\n")),
+			moveLeft: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, editorMoveLeft),
+			moveRight: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, editorMoveRight),
+			moveUp: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, (s) => moveVertically(s, -1)),
+			moveDown: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, (s) => moveVertically(s, 1)),
+			moveLineStart: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, moveLineStart),
+			moveLineEnd: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, moveLineEnd),
+			moveWordBackward: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, moveWordBackward),
+			moveWordForward: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, moveWordForward),
+			backspace: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, editorBackspace),
+			deleteForward: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, editorDeleteForward),
+			deleteWordBackward: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, deleteWordBackward),
+			deleteWordForward: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, deleteWordForward),
+			deleteToLineStart: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, deleteToLineStart),
+			deleteToLineEnd: () => editFinding({ body: findingEditModal.body, cursor: findingEditModal.cursor }, deleteToLineEnd),
+		},
+		humanCommentModal: {
+			closeModal: closeActiveModal,
+			save: saveHumanComment,
+			insertNewline: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, (s) => insertText(s, "\n")),
+			moveLeft: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, editorMoveLeft),
+			moveRight: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, editorMoveRight),
+			moveUp: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, (s) => moveVertically(s, -1)),
+			moveDown: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, (s) => moveVertically(s, 1)),
+			moveLineStart: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, moveLineStart),
+			moveLineEnd: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, moveLineEnd),
+			moveWordBackward: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, moveWordBackward),
+			moveWordForward: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, moveWordForward),
+			backspace: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, editorBackspace),
+			deleteForward: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, editorDeleteForward),
+			deleteWordBackward: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, deleteWordBackward),
+			deleteWordForward: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, deleteWordForward),
+			deleteToLineStart: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, deleteToLineStart),
+			deleteToLineEnd: () => editHumanComment({ body: humanCommentModal.body, cursor: humanCommentModal.cursor }, deleteToLineEnd),
+		},
+		postFindingsModal: {
+			closeModal: closeActiveModal,
+			confirmPost: confirmPostFindings,
+			stepUp: () => setPostFindingsModal((current) => ({ ...current, selectedIndex: Math.max(0, current.selectedIndex - 1) })),
+			stepDown: () =>
+				setPostFindingsModal((current) => {
+					const postable = findingsPanelFindings.filter((f) => f.status === "accepted" || f.status === "modified")
+					return { ...current, selectedIndex: Math.min(postable.length - 1, current.selectedIndex + 1) }
+				}),
+		},
+		findingsPanel: {
+			halfPage,
+			scrollBy: (delta: number) => setFindingsPanelSelection((current) => Math.max(0, Math.min(findingsPanelFindings.length - 1, current + delta))),
+			scrollTo: (index: number) => setFindingsPanelSelection(Math.max(0, Math.min(findingsPanelFindings.length - 1, index))),
+			closePanel: closeFindingsPanel,
+			stepUp: () => setFindingsPanelSelection((current) => Math.max(0, current - 1)),
+			stepDown: () => setFindingsPanelSelection((current) => Math.min(findingsPanelFindings.length - 1, current + 1)),
+			acceptFinding: acceptSelectedFinding,
+			rejectFinding: rejectSelectedFinding,
+			editFinding: openFindingEditModalForSelected,
+			openPostFindings: openPostFindingsModal,
+			openHumanComment: openHumanCommentModal,
+		},
+		askAIPanel: {
+			closePanel: closeAskAIPanel,
+			submit: submitAIPrompt,
+			insertNewline: () => {
+				const state = { body: askAIPanelInput, cursor: askAIPanelCursor }
+				const next = insertText(state, "\n")
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			moveLeft: () => {
+				const next = editorMoveLeft({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			moveRight: () => {
+				const next = editorMoveRight({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			moveUp: () => {
+				const next = moveVertically({ body: askAIPanelInput, cursor: askAIPanelCursor }, -1)
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			moveDown: () => {
+				const next = moveVertically({ body: askAIPanelInput, cursor: askAIPanelCursor }, 1)
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			moveLineStart: () => {
+				const next = moveLineStart({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			moveLineEnd: () => {
+				const next = moveLineEnd({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			moveWordBackward: () => {
+				const next = moveWordBackward({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			moveWordForward: () => {
+				const next = moveWordForward({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			backspace: () => {
+				const next = editorBackspace({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			deleteForward: () => {
+				const next = editorDeleteForward({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			deleteWordBackward: () => {
+				const next = deleteWordBackward({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			deleteWordForward: () => {
+				const next = deleteWordForward({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			deleteToLineStart: () => {
+				const next = deleteToLineStart({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			deleteToLineEnd: () => {
+				const next = deleteToLineEnd({ body: askAIPanelInput, cursor: askAIPanelCursor })
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			},
+			scrollHistoryUp: () => {},
+			scrollHistoryDown: () => {},
+		},
+		sessionViewerPanel: {
+			halfPage,
+			scrollBy: (delta: number) => setSessionViewerPanelSelection((current) => Math.max(0, Math.min(sessionViewerPanelSessions.length - 1, current + delta))),
+			scrollTo: (index: number) => setSessionViewerPanelSelection(Math.max(0, Math.min(sessionViewerPanelSessions.length - 1, index))),
+			closePanel: closeSessionViewerPanel,
+			stepUp: () => setSessionViewerPanelSelection((current) => Math.max(0, current - 1)),
+			stepDown: () => setSessionViewerPanelSelection((current) => Math.min(sessionViewerPanelSessions.length - 1, current + 1)),
+			selectSession: selectSessionViewerSession,
 		},
 		commentModal: {
 			closeModal: closeActiveModal,
@@ -3370,6 +3899,10 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 			refresh: () => runCommandById("pull.refresh"),
 			openInBrowser: () => runCommandById("pull.open-browser"),
 			copyMetadata: () => runCommandById("pull.copy-metadata"),
+			initiateReview: openInitiateReview,
+			openFindingsPanel: openFindingsPanelForPR,
+			openAskAI: openAskAIPanelForPR,
+			openSessionViewer: openSessionViewerPanelForPR,
 		},
 		commentsView: {
 			halfPage,
@@ -3452,6 +3985,36 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 		if (commentModalActive) {
 			const text = printableKeyText(key)
 			if (text) editComment((state) => insertText(state, text))
+			return
+		}
+
+		if (findingEditModalActive) {
+			const text = printableKeyText(key)
+			if (text)
+				setFindingEditModal((current) => {
+					const next = insertText({ body: current.body, cursor: current.cursor }, text)
+					return { ...current, body: next.body, cursor: next.cursor }
+				})
+			return
+		}
+
+		if (humanCommentModalActive) {
+			const text = printableKeyText(key)
+			if (text)
+				setHumanCommentModal((current) => {
+					const next = insertText({ body: current.body, cursor: current.cursor }, text)
+					return { ...current, body: next.body, cursor: next.cursor }
+				})
+			return
+		}
+
+		if (askAIPanelActive) {
+			const text = printableKeyText(key)
+			if (text) {
+				const next = insertText({ body: askAIPanelInput, cursor: askAIPanelCursor }, text)
+				setAskAIPanelInput(next.body)
+				setAskAIPanelCursor(next.cursor)
+			}
 			return
 		}
 
@@ -3632,12 +4195,40 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 			<box paddingLeft={1} paddingRight={1} flexDirection="column" backgroundColor={colors.background}>
 				<PlainLine text={headerLine} fg={colors.muted} bold />
 			</box>
-			{isWideLayout && !detailFullView && !diffFullView && !commentsViewActive ? (
+			{isWideLayout && !detailFullView && !diffFullView && !commentsViewActive && !findingsPanelActive && !askAIPanelActive && !sessionViewerPanelActive ? (
 				<Divider width={contentWidth} junctionAt={dividerJunctionAt} junctionChar="┬" />
 			) : (
 				<Divider width={contentWidth} />
 			)}
-			{commentsViewActive && selectedPullRequest ? (
+			{findingsPanelActive && selectedPullRequest ? (
+				<FindingsPanel
+					findings={findingsPanelFindings}
+					selectedIndex={findingsPanelSelection}
+					contentWidth={fullscreenContentWidth}
+					contentHeight={wideBodyHeight}
+					loadingIndicator={loadingIndicator}
+				/>
+			) : askAIPanelActive ? (
+				<AskAIPanel
+					messages={askAIPanelMessages}
+					inputText={askAIPanelInput}
+					cursor={askAIPanelCursor}
+					loading={askAIPanelLoading}
+					error={null}
+					contentWidth={fullscreenContentWidth}
+					contentHeight={wideBodyHeight}
+					loadingIndicator={loadingIndicator}
+				/>
+			) : sessionViewerPanelActive && selectedPullRequest ? (
+				<SessionViewerPanel
+					sessions={sessionViewerPanelSessions}
+					selectedSessionIndex={sessionViewerPanelSelection}
+					expandedSessionId={sessionViewerExpandedSessionId}
+					messages={sessionViewerMessages}
+					contentWidth={fullscreenContentWidth}
+					contentHeight={wideBodyHeight}
+				/>
+			) : commentsViewActive && selectedPullRequest ? (
 				<CommentsPane
 					pullRequest={selectedPullRequest}
 					comments={selectedComments}
@@ -3850,7 +4441,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 				</box>
 			)}
 
-			{isWideLayout && !detailFullView && !diffFullView && !commentsViewActive ? (
+			{isWideLayout && !detailFullView && !diffFullView && !commentsViewActive && !findingsPanelActive && !askAIPanelActive && !sessionViewerPanelActive ? (
 				<Divider width={contentWidth} junctionAt={dividerJunctionAt} junctionChar="┴" />
 			) : (
 				<Divider width={contentWidth} />
@@ -4000,6 +4591,47 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 					offsetTop={commandPaletteTop}
 					onSelectCommandIndex={selectCommandPaletteIndex}
 					onRunCommand={runCommandPaletteCommand}
+				/>
+			) : null}
+			{initiateReviewModalActive ? (
+				<InitiateReviewModal
+					state={initiateReviewModal}
+					agentName={acpAgentName}
+					worktreePath=""
+					modalWidth={Math.min(60, Math.max(30, contentWidth - 4))}
+					modalHeight={10}
+					offsetLeft={centeredOffset(contentWidth, Math.min(60, Math.max(30, contentWidth - 4)))}
+					offsetTop={centeredOffset(terminalHeight, 10)}
+					loadingIndicator={loadingIndicator}
+				/>
+			) : null}
+			{findingEditModalActive ? (
+				<FindingEditModal
+					state={findingEditModal}
+					modalWidth={Math.min(80, Math.max(40, contentWidth - 4))}
+					modalHeight={Math.min(20, Math.max(10, terminalHeight - 4))}
+					offsetLeft={centeredOffset(contentWidth, Math.min(80, Math.max(40, contentWidth - 4)))}
+					offsetTop={centeredOffset(terminalHeight, Math.min(20, Math.max(10, terminalHeight - 4)))}
+				/>
+			) : null}
+			{humanCommentModalActive ? (
+				<HumanCommentModal
+					state={humanCommentModal}
+					modalWidth={Math.min(80, Math.max(40, contentWidth - 4))}
+					modalHeight={Math.min(20, Math.max(10, terminalHeight - 4))}
+					offsetLeft={centeredOffset(contentWidth, Math.min(80, Math.max(40, contentWidth - 4)))}
+					offsetTop={centeredOffset(terminalHeight, Math.min(20, Math.max(10, terminalHeight - 4)))}
+				/>
+			) : null}
+			{postFindingsModalActive ? (
+				<PostFindingsModal
+					state={postFindingsModal}
+					findings={findingsPanelFindings.filter((f) => f.status === "accepted" || f.status === "modified")}
+					modalWidth={Math.min(70, Math.max(40, contentWidth - 4))}
+					modalHeight={Math.min(20, Math.max(8, terminalHeight - 4))}
+					offsetLeft={centeredOffset(contentWidth, Math.min(70, Math.max(40, contentWidth - 4)))}
+					offsetTop={centeredOffset(terminalHeight, Math.min(20, Math.max(8, terminalHeight - 4)))}
+					loadingIndicator={loadingIndicator}
 				/>
 			) : null}
 		</box>
