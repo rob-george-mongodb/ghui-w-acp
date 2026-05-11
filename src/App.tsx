@@ -73,6 +73,9 @@ import {
 	saveStoredDiffWhitespaceMode,
 	saveStoredThemeConfig,
 	makeCoreLayer,
+	INBOX_SECTIONS,
+	INBOX_SECTION_ORDER,
+	classifyInboxSection,
 } from "@ghui/core"
 import { colors, filterThemeDefinitions, mixHex, pairedThemeId, setActiveTheme, themeDefinitions, themeToneForThemeId, type ThemeId, type ThemeTone } from "./ui/colors.js"
 import {
@@ -446,7 +449,16 @@ const visibleRepoOrderAtom = Atom.make((get) => {
 	return [...new Set(get(filteredPullRequestsAtom).map((pullRequest) => pullRequest.repository))]
 })
 
-const visibleGroupsAtom = Atom.make((get) => groupBy(get(filteredPullRequestsAtom), (pullRequest) => pullRequest.repository, get(visibleRepoOrderAtom)))
+const visibleGroupsAtom = Atom.make((get) => {
+	const activeView = get(activeViewAtom)
+	const pullRequests = get(filteredPullRequestsAtom)
+	if (activeView._tag === "Queue" && activeView.mode === "inbox") {
+		const viewer = AsyncResult.getOrElse(get(usernameAtom), () => null)
+		const orderedTitles = INBOX_SECTION_ORDER.map((id) => INBOX_SECTIONS[id].title)
+		return groupBy(pullRequests, (pr) => classifyInboxSection(pr, viewer).title, orderedTitles)
+	}
+	return groupBy(pullRequests, (pullRequest) => pullRequest.repository, get(visibleRepoOrderAtom))
+})
 
 const visiblePullRequestsAtom = Atom.make((get) => get(visibleGroupsAtom).flatMap(([, pullRequests]) => pullRequests))
 
@@ -981,8 +993,20 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 				loadedCount: loadedPullRequestCount,
 				hasMore: hasMorePullRequests,
 				isLoadingMore: isLoadingMorePullRequests,
+				groupKind: activeView._tag === "Queue" && activeView.mode === "inbox" ? "inbox-section" : "repository",
 			}),
-		[visibleGroups, pullRequestStatus, pullRequestError, visibleFilterText, filterMode, filterQuery, loadedPullRequestCount, hasMorePullRequests, isLoadingMorePullRequests],
+		[
+			visibleGroups,
+			pullRequestStatus,
+			pullRequestError,
+			visibleFilterText,
+			filterMode,
+			filterQuery,
+			loadedPullRequestCount,
+			hasMorePullRequests,
+			isLoadingMorePullRequests,
+			activeView,
+		],
 	)
 	const selectedPullRequestRowIndex = pullRequestListRowIndex(pullRequestListRows, selectedPullRequest?.url ?? null)
 	const selectedDiffKey = useAtomValue(selectedDiffKeyAtom)
@@ -3515,6 +3539,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 		hasMore: hasMorePullRequests,
 		isLoadingMore: isLoadingMorePullRequests,
 		loadingIndicator,
+		groupKind: activeView._tag === "Queue" && activeView.mode === "inbox" ? ("inbox-section" as const) : ("repository" as const),
 		onSelectPullRequest: selectPullRequestByUrl,
 	} as const
 	const widePullRequestList = (

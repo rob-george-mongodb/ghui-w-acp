@@ -85,4 +85,14 @@ export {
 } from "./services/GitHubService.js"
 export { MockGitHubService, buildMockPullRequests, type MockOptions } from "./services/MockGitHubService.js"
 
+export {
+	type InboxSectionId,
+	type InboxSection,
+	INBOX_SECTIONS,
+	INBOX_SECTION_ORDER,
+	type PullRequestUpdatedSinceWindow,
+	inboxUpdatedSinceCutoff,
+	classifyInboxSection,
+} from "./inbox.js"
+
 export { makeCoreLayer, type CoreLayerOptions } from "./runtime.js"

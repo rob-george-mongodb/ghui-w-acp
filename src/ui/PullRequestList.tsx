@@ -11,7 +11,7 @@ export type PullRequestListRow =
 	| { readonly _tag: "title" }
 	| { readonly _tag: "filter" }
 	| { readonly _tag: "message"; readonly text: string; readonly color: string }
-	| { readonly _tag: "group"; readonly repository: string; readonly pullRequests: readonly PullRequestItem[] }
+	| { readonly _tag: "group"; readonly label: string; readonly pullRequests: readonly PullRequestItem[]; readonly kind: "repository" | "inbox-section" }
 	| { readonly _tag: "pull-request"; readonly pullRequest: PullRequestItem; readonly numberWidth: number; readonly ageWidth: number }
 	| { readonly _tag: "load-more"; readonly text: string }
 
@@ -56,6 +56,7 @@ export const buildPullRequestListRows = ({
 	hasMore,
 	isLoadingMore,
 	loadingIndicator = "-",
+	groupKind = "repository",
 }: {
 	readonly groups: PullRequestGroups
 	readonly status: LoadStatus
@@ -66,6 +67,7 @@ export const buildPullRequestListRows = ({
 	readonly hasMore: boolean
 	readonly isLoadingMore: boolean
 	readonly loadingIndicator?: string
+	readonly groupKind?: "repository" | "inbox-section"
 }): readonly PullRequestListRow[] => {
 	const itemCount = groups.reduce((count, [, pullRequests]) => count + pullRequests.length, 0)
 	const rows: PullRequestListRow[] = [{ _tag: "title" }]
@@ -75,7 +77,7 @@ export const buildPullRequestListRows = ({
 	if (status === "ready" && itemCount === 0)
 		rows.push({ _tag: "message", text: filterText.length > 0 ? "- No matching pull requests." : "- No open pull requests.", color: colors.muted })
 	for (const [repository, pullRequests] of groups) {
-		rows.push({ _tag: "group", repository, pullRequests })
+		rows.push({ _tag: "group", label: repository, pullRequests, kind: groupKind })
 		const numberWidth = groupNumberWidth(pullRequests)
 		const ageWidth = groupAgeWidth(pullRequests)
 		for (const pullRequest of pullRequests) rows.push({ _tag: "pull-request", pullRequest, numberWidth, ageWidth })
@@ -151,6 +153,7 @@ export const PullRequestList = ({
 	hasMore,
 	isLoadingMore,
 	loadingIndicator,
+	groupKind = "repository",
 	onSelectPullRequest,
 }: {
 	groups: PullRequestGroups
@@ -165,9 +168,10 @@ export const PullRequestList = ({
 	hasMore: boolean
 	isLoadingMore: boolean
 	loadingIndicator: string
+	groupKind?: "repository" | "inbox-section"
 	onSelectPullRequest: (url: string) => void
 }) => {
-	const rows = buildPullRequestListRows({ groups, status, error, filterText, showFilterBar, loadedCount, hasMore, isLoadingMore, loadingIndicator })
+	const rows = buildPullRequestListRows({ groups, status, error, filterText, showFilterBar, loadedCount, hasMore, isLoadingMore, loadingIndicator, groupKind })
 	const [hoveredUrl, setHoveredUrl] = useState<string | null>(null)
 
 	return (
@@ -185,7 +189,8 @@ export const PullRequestList = ({
 				}
 				if (row._tag === "message") return <PlainLine key={`message-${index}`} text={row.text} fg={row.color} />
 				if (row._tag === "load-more") return <PlainLine key="load-more" text={row.text} fg={colors.muted} />
-				if (row._tag === "group") return <GroupTitle key={`group-${row.repository}`} label={row.repository} color={repoColor(row.repository)} filterText={filterText} />
+				if (row._tag === "group")
+					return <GroupTitle key={`group-${row.label}`} label={row.label} color={row.kind === "inbox-section" ? colors.accent : repoColor(row.label)} filterText={filterText} />
 
 				const pullRequestUrl = row.pullRequest.url
 				return (
