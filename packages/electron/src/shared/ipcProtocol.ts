@@ -6,14 +6,16 @@ import type {
 	PullRequestLabel,
 	PullRequestMergeAction,
 	PullRequestMergeInfo,
+	PullRequestPage,
 	PullRequestReviewComment,
+	RepositoryMergeMethods,
 	SubmitPullRequestReviewInput,
 } from "@ghui/core/node"
 import type { PullRequestLoad } from "@ghui/core/node"
 import type { PullRequestView } from "@ghui/core/node"
 
 export type IpcChannels = {
-	"pr:list": { args: [view: PullRequestView]; result: PullRequestItem[] }
+	"pr:list": { args: [view: PullRequestView, cursor?: string | null, pageSize?: number]; result: PullRequestPage }
 	"pr:details": { args: [repo: string, number: number]; result: PullRequestItem }
 	"pr:comments": { args: [repo: string, number: number]; result: readonly PullRequestComment[] }
 	"pr:mergeInfo": { args: [repo: string, number: number]; result: PullRequestMergeInfo }
@@ -24,6 +26,8 @@ export type IpcChannels = {
 	"pr:labels:list": { args: [repo: string]; result: readonly { readonly name: string; readonly color: string | null }[] }
 	"pr:labels:add": { args: [repo: string, number: number, label: string]; result: void }
 	"pr:labels:remove": { args: [repo: string, number: number, label: string]; result: void }
+	"pr:mergeMethods": { args: [repo: string]; result: RepositoryMergeMethods }
+	"pr:issueComment:create": { args: [repo: string, number: number, body: string]; result: PullRequestComment }
 	"pr:comment:create": { args: [input: CreatePullRequestCommentInput]; result: PullRequestReviewComment }
 	"pr:comment:edit": { args: [repo: string, commentId: string, body: string]; result: void }
 	"pr:comment:delete": { args: [repo: string, commentId: string]; result: void }

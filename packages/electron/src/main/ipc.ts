@@ -39,13 +39,12 @@ export const setupIpcHandlers = (appConfig: AppConfig) => {
 		})
 	}
 
-	handle("pr:list", (view: PullRequestView) =>
+	handle("pr:list", (view: PullRequestView, cursor?: string | null, pageSize?: number) =>
 		Effect.gen(function* () {
 			const github = yield* GitHubService
 			const mode = view._tag === "Repository" ? "repository" as const : view.mode
 			const repo = view.repository
-			const items = yield* github.listOpenPullRequests(mode, repo)
-			return [...items]
+			return yield* github.listOpenPullRequestPage({ mode, repository: repo, cursor: cursor ?? null, pageSize: pageSize ?? 50 })
 		}),
 	)
 
@@ -116,6 +115,20 @@ export const setupIpcHandlers = (appConfig: AppConfig) => {
 		Effect.gen(function* () {
 			const github = yield* GitHubService
 			yield* github.removePullRequestLabel(repo, number, label)
+		}),
+	)
+
+	handle("pr:mergeMethods", (repo) =>
+		Effect.gen(function* () {
+			const github = yield* GitHubService
+			return yield* github.getRepositoryMergeMethods(repo)
+		}),
+	)
+
+	handle("pr:issueComment:create", (repo, number, body) =>
+		Effect.gen(function* () {
+			const github = yield* GitHubService
+			return yield* github.createPullRequestIssueComment(repo, number, body)
 		}),
 	)
 

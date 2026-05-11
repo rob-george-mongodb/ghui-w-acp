@@ -231,5 +231,13 @@ Same for CacheService — split the interface/types from the `@effect/sql-sqlite
 
 This is a minor core change but necessary. Will flag to human if they object.
 
+## IPC Protocol Gaps (from research)
+- Need `pr:mergeMethods` for merge method picker
+- `pr:list` should return `PullRequestLoad` (with pagination cursor) not just `PullRequestItem[]`
+- Need `pr:issueComment:create` (distinct from review comment create)
+- Diff-related channels are out of scope per plan
+
 ## Status
-- Starting Phase 1: Scaffold + Node.js services
+- ✅ Core refactoring: CommandRunner/CacheService split from Bun impls
+- ✅ Electron scaffold: package, electron-vite, main process, IPC, preload, Node.js CommandRunner
+- 🔄 Starting Phase 3: React web UI components
