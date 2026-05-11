@@ -1,4 +1,6 @@
 import { app, BrowserWindow } from "electron"
+
+app.disableHardwareAcceleration()
 import { join } from "node:path"
 import { setupIpcHandlers } from "./ipc.js"
 import type { AppConfig } from "@ghui/core/node"
@@ -17,7 +19,7 @@ const createWindow = () => {
 		width: 1200,
 		height: 800,
 		webPreferences: {
-			preload: join(__dirname, "../preload/index.js"),
+			preload: join(__dirname, "../preload/index.mjs"),
 			contextIsolation: true,
 			nodeIntegration: false,
 		},
