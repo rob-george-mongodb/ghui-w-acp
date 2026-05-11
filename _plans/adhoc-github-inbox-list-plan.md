@@ -12,7 +12,7 @@ The requested change is to let ghui show pull requests more like the GitHub web 
 
 ## Acceptance Criteria
 
-- ghui gains a dedicated `Inbox` view that renders grouped sections for `Needs your review`, `Your drafts`, `Waiting for review`, `Needs action`, and `Ready to merge`.
+- ghui gains a dedicated `Inbox` view that renders grouped sections for `Needs your review`, `Your drafts`, `Waiting for review`, and `Needs action`.
 - Inbox rows render richer metadata than the current one-line queue rows, including repository/number context, author, relative updated time, and status/comment signals derived from GitHub data already fetched by the app.
 - Inbox results default to PRs updated within the last month, with a startup-only env override; there is no requirement for a runtime-updatable dropdown in v1.
 - Existing `repository`, `authored`, `review`, `assigned`, and `mentioned` views remain available and keep their current pagination and sort behavior.
@@ -57,21 +57,15 @@ The requested change is to let ghui show pull requests more like the GitHub web 
 
 ## Proposed Changes
 
-### 1. Add a dedicated `Inbox` view instead of overloading the existing queue modes
+### 1. Add an `Inbox` view (minimal v1)
 
-Introduce a third `PullRequestView` variant, `Inbox`, rather than trying to fake the GitHub web inbox as another queue mode.
+For v1 implement a single, additive "Inbox" view that renders grouped action sections. Long-term it may make sense to introduce a new `PullRequestView` variant, but that refactor can be out of scope for the first UI: the initial implementation will add the inbox surface while keeping the existing view union and plumbing unchanged where possible.
 
-Why this should be a distinct view:
+Planned touch points (v1, minimal):
 
-- The current queue path assumes one query, one cursor, and repository grouping (`src/App.tsx:290-350`, `src/App.tsx:449-451`, `packages/core/src/pullRequestLoad.ts:4-9`).
-- A GitHub-style inbox is a composite of multiple logical buckets, with fixed section ordering and bucket-specific query rules, so it does not map cleanly onto the current `mode` abstraction.
-
-Planned touch points:
-
-- Extend `PullRequestView` helpers (`packages/core/src/pullRequestViews.ts:3-30`) with `Inbox` branches for `viewCacheKey`, `viewEquals`, `viewLabel`, and `activePullRequestViews`.
-- Update `CacheService` view decoding so cached queue snapshots can store/read the new `_tag` (`packages/core/src/services/CacheService.ts:64-67`).
-- Add an `inbox` command/view entry via the existing generated view-command path (`packages/core/src/appCommands.ts:178-188`).
-- Keep the current repository/authored/review/assigned/mentioned views available so this ships as an additive view model, not a destructive rewrite.
+- Add a command/view entry for `inbox` so users can open the new inbox surface (`packages/core/src/appCommands.ts:178-188`).
+- Keep existing repository/authored/review/assigned/mentioned views available so this ships as an additive feature.
+- Defer a full `PullRequestView` union change to a follow-up unless the implementation proves the refactor is necessary.
 
 ### 2. Load the inbox by composing several GitHub search queries, not by inventing a new transport
 
@@ -83,7 +77,6 @@ Recommended v1 section model:
 2. `Your drafts`
 3. `Waiting for review`
 4. `Needs action`
-5. `Ready to merge`
 
 `Needs your teams' review` is explicitly out of scope for v1. The repo has no team-membership discovery or team-config mechanism today, so promising GitHub parity there would introduce unresolved product and configuration work before the main inbox view even ships (`packages/core/src/themeStore.ts:18-41`).
 
@@ -100,21 +93,17 @@ Representative section query shapes for planning purposes:
 - `Your drafts`: `is:pr is:open author:@me draft:true updated:>=<cutoff> sort:updated-desc`
 - `Waiting for review`: broad authored search (`is:pr is:open author:@me draft:false updated:>=<cutoff> sort:updated-desc`), then client-side classification using `reviewDecision`, `isDraft`, and the section precedence rules below
 - `Needs action`: `is:pr is:open author:@me review:changes_requested updated:>=<cutoff> sort:updated-desc`
-- `Ready to merge`: broad authored search (`is:pr is:open author:@me draft:false updated:>=<cutoff> sort:updated-desc`), then client-side classification using `reviewDecision`, check rollup, and draft state
 
 Important query-semantics decisions:
 
 - Do **not** rely on negated `review:` search qualifiers for `Waiting for review`; reviewer feedback correctly called out that this is not a safe way to express “awaiting review.” The authoritative assignment should happen client-side after fetch, using GraphQL fields the app already parses or will add (`packages/core/src/services/GitHubService.ts:226-261`).
 - For the direct-review bucket, use `user-review-requested:@me`, not `review-requested:@me`. The existing queue mode uses `review-requested:@me` today (`packages/core/src/domain.ts:24`), but your feedback calls out that this behaves badly with GitHub codeowners/team review behavior, so the inbox plan should intentionally use the user-specific qualifier instead.
-- Do **not** rely on `status:success` for `Ready to merge`; GitHub search `status:` is tied to commit status semantics and can miss modern check-run-only repos. The implementation should instead use the already-planned `statusCheckRollup`-derived `checkStatus` from the fetched PR data (`packages/core/src/services/GitHubService.ts:215-240`, `packages/core/src/services/GitHubService.ts:368-410`).
-
 Inbox section precedence must be explicit in the implementation and tests. For v1, classify each PR into exactly one section using this order:
 
 1. `Needs your review`
 2. `Your drafts`
 3. `Needs action`
-4. `Ready to merge`
-5. `Waiting for review`
+4. `Waiting for review`
 
 That precedence keeps action-required states ahead of passive authored states and avoids double-rendering when a PR matches multiple broad searches.
 
@@ -131,7 +120,7 @@ Recommended additions to `PullRequestItem` / list query fragments:
 - `updatedAt: Date`
 - `totalCommentsCount: number`
 - `mergeable: Mergeable | null` or equivalent normalized enum
-- `assignees: readonly string[]`
+-- `assignees: readonly { login: string; name?: string; approved?: boolean }[]` (include assignee identity and optional approval status rather than only raw strings)
 - `reviewRequests: readonly { readonly type: "user" | "team"; readonly name: string }[]`
 - optionally `latestOpinionatedReviews` in a normalized form if the final section rules need more reviewer detail than `reviewDecision`
 
@@ -149,14 +138,16 @@ Generalize the list pipeline so legacy views keep repository grouping, while the
 
 Planned UI/data changes:
 
-- Introduce a small inbox section model (for example `InboxSection` plus ordered metadata like title and sort priority) in core or a dedicated shared list-view module.
-- Change `visibleGroupsAtom` from “always group by repository” to “group by repository for legacy views, group by inbox section for inbox view” (`src/App.tsx:443-451`).
-- Generalize `PullRequestListRow["group"]` so a group header can represent a repository **or** an inbox section with a badge count (`src/ui/PullRequestList.tsx:10-16`, `src/ui/PullRequestList.tsx:77-81`, `src/ui/PullRequestList.tsx:188`).
-- Keep PR rows themselves selectable while leaving group headers non-selectable in v1. That preserves the current `selectedIndex -> visiblePullRequests` mapping and avoids rewriting the scroll/selection system (`src/App.tsx:451-467`, `src/App.tsx:973-987`, `src/App.tsx:1371-1378`).
+-- Introduce a small inbox section model (for example `InboxSection` plus ordered metadata like title and sort priority) if needed, but UI changes can be minimal for v1: showing a single inbox surface with section headers is sufficient.
+-- Keep `visibleGroupsAtom` behavior conservative for v1: avoid large refactors to grouping atoms unless required by implementation.
+-- Keep PR rows selectable and group headers non-selectable to preserve current selection/scroll behavior.
 
 ### 5. Update the row layout to look like a GitHub inbox row instead of the current single-line queue row
 
 The current row is a compact TUI queue row, not a GitHub-like inbox row (`src/ui/PullRequestList.tsx:95-138`). The inbox view should adopt a richer row shape:
+
+
+Note: row fields must be configurable. For v1 default to the existing compact row behavior; expose configuration options to enable richer inbox-style rows showing:
 
 - primary line: title
 - secondary line: `repo#number • author • updated <relative>`

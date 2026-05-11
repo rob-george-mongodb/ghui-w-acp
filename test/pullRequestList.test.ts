@@ -63,4 +63,59 @@ describe("buildPullRequestListRows", () => {
 
 		expect(rows.at(-1)).toEqual({ _tag: "load-more", text: "⠋ Loading more pull requests... (50 loaded)" })
 	})
+
+	test("inbox groupKind emits inbox-section group rows", () => {
+		const rows = buildPullRequestListRows({
+			groups: [["Needs your review", [pullRequest()]]],
+			status: "ready",
+			error: null,
+			filterText: "",
+			showFilterBar: false,
+			loadedCount: 1,
+			hasMore: false,
+			isLoadingMore: false,
+			groupKind: "inbox-section",
+		})
+
+		const groupRow = rows.find((r) => r._tag === "group")
+		expect(groupRow).toBeDefined()
+		expect(groupRow!.kind).toBe("inbox-section")
+	})
+
+	test("inbox groupKind emits pr rows with kind inbox and zero ageWidth", () => {
+		const rows = buildPullRequestListRows({
+			groups: [["Needs your review", [pullRequest()]]],
+			status: "ready",
+			error: null,
+			filterText: "",
+			showFilterBar: false,
+			loadedCount: 1,
+			hasMore: false,
+			isLoadingMore: false,
+			groupKind: "inbox-section",
+		})
+
+		const prRow = rows.find((r) => r._tag === "pull-request")
+		expect(prRow).toBeDefined()
+		expect(prRow!.kind).toBe("inbox")
+		expect(prRow!.ageWidth).toBe(0)
+	})
+
+	test("repository groupKind emits pr rows with positive ageWidth", () => {
+		const rows = buildPullRequestListRows({
+			groups: [["owner/repo", [pullRequest()]]],
+			status: "ready",
+			error: null,
+			filterText: "",
+			showFilterBar: false,
+			loadedCount: 1,
+			hasMore: false,
+			isLoadingMore: false,
+		})
+
+		const prRow = rows.find((r) => r._tag === "pull-request")
+		expect(prRow).toBeDefined()
+		expect(prRow!.kind).toBe("repository")
+		expect(prRow!.ageWidth).toBeGreaterThan(0)
+	})
 })

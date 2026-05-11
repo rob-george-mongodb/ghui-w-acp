@@ -1,9 +1,9 @@
 import { TextAttributes } from "@opentui/core"
 import { useState } from "react"
-import { daysOpen, type LoadStatus, type PullRequestItem } from "@ghui/core"
+import { daysOpen, formatRelativeDate, type LoadStatus, type PullRequestItem } from "@ghui/core"
 import { colors, rowHoverBackground } from "./colors.js"
 import { fitCell, MatchedCell, PlainLine, SectionTitle, TextLine } from "./primitives.js"
-import { pullRequestRowDisplay, repoColor, reviewIcon } from "./pullRequests.js"
+import { pullRequestRowDisplay, repoColor, reviewIcon, shortRepoName } from "./pullRequests.js"
 
 export type PullRequestGroups = Array<[string, PullRequestItem[]]>
 
@@ -12,14 +12,16 @@ export type PullRequestListRow =
 	| { readonly _tag: "filter" }
 	| { readonly _tag: "message"; readonly text: string; readonly color: string }
 	| { readonly _tag: "group"; readonly label: string; readonly pullRequests: readonly PullRequestItem[]; readonly kind: "repository" | "inbox-section" }
-	| { readonly _tag: "pull-request"; readonly pullRequest: PullRequestItem; readonly numberWidth: number; readonly ageWidth: number }
+	| { readonly _tag: "pull-request"; readonly pullRequest: PullRequestItem; readonly numberWidth: number; readonly ageWidth: number; readonly kind: "repository" | "inbox" }
 	| { readonly _tag: "load-more"; readonly text: string }
 
 const GROUP_ICON = "◆"
+const REVIEW_WIDTH = 1
+const CHECK_WIDTH = 2
 
 const getRowLayout = (contentWidth: number, numberWidth: number, ageWidth: number) => {
-	const reviewWidth = 1
-	const checkWidth = 2
+	const reviewWidth = REVIEW_WIDTH
+	const checkWidth = CHECK_WIDTH
 	const fixedWidth = reviewWidth + 1 + numberWidth + 1 + checkWidth + ageWidth
 	const titleWidth = Math.max(8, contentWidth - fixedWidth)
 	return { reviewWidth, checkWidth, ageWidth, numberWidth, titleWidth }
@@ -31,7 +33,8 @@ const groupNumberWidth = (pullRequests: readonly PullRequestItem[]) => {
 	return maxLen + 1
 }
 
-const groupAgeWidth = (pullRequests: readonly PullRequestItem[]) => {
+const groupAgeWidth = (pullRequests: readonly PullRequestItem[], kind: "repository" | "inbox") => {
+	if (kind === "inbox") return 0
 	if (pullRequests.length === 0) return 4
 	const maxLen = Math.max(...pullRequests.map((pr) => `${daysOpen(pr.createdAt)}d`.length))
 	return Math.max(4, maxLen + 1)
@@ -78,9 +81,10 @@ export const buildPullRequestListRows = ({
 		rows.push({ _tag: "message", text: filterText.length > 0 ? "- No matching pull requests." : "- No open pull requests.", color: colors.muted })
 	for (const [repository, pullRequests] of groups) {
 		rows.push({ _tag: "group", label: repository, pullRequests, kind: groupKind })
+		const rowKind = groupKind === "inbox-section" ? ("inbox" as const) : ("repository" as const)
 		const numberWidth = groupNumberWidth(pullRequests)
-		const ageWidth = groupAgeWidth(pullRequests)
-		for (const pullRequest of pullRequests) rows.push({ _tag: "pull-request", pullRequest, numberWidth, ageWidth })
+		const ageWidth = groupAgeWidth(pullRequests, rowKind)
+		for (const pullRequest of pullRequests) rows.push({ _tag: "pull-request", pullRequest, numberWidth, ageWidth, kind: rowKind })
 	}
 	if (status === "ready" && itemCount > 0 && (hasMore || isLoadingMore)) {
 		rows.push({ _tag: "load-more", text: isLoadingMore ? `${loadingIndicator} Loading more pull requests... (${loadedCount} loaded)` : `- ${loadedCount} loaded, more available` })
@@ -102,6 +106,7 @@ const PullRequestRow = ({
 	numWidth,
 	ageColWidth,
 	filterText,
+	kind,
 	onSelect,
 	onHoverChange,
 }: {
@@ -112,15 +117,46 @@ const PullRequestRow = ({
 	numWidth: number
 	ageColWidth: number
 	filterText: string
+	kind: "repository" | "inbox"
 	onSelect: () => void
 	onHoverChange: (hovered: boolean) => void
 }) => {
+	const display = pullRequestRowDisplay(pullRequest, selected)
+	const rowBg = selected ? colors.selectedBg : hovered ? rowHoverBackground() : undefined
+
+	if (kind === "inbox") {
+		const titleWidth = Math.max(8, contentWidth - REVIEW_WIDTH - 1 - numWidth - 1 - 2)
+		const indent = " ".repeat(REVIEW_WIDTH + 1 + numWidth + 1)
+		const meta = `${shortRepoName(pullRequest.repository)}#${pullRequest.number} • ${pullRequest.author} • ${formatRelativeDate(pullRequest.updatedAt)}${pullRequest.totalCommentsCount > 0 ? ` • ${pullRequest.totalCommentsCount} comments` : ""}`
+
+		return (
+			<box flexDirection="column" width={contentWidth}>
+				<TextLine width={contentWidth} fg={display.rowFg} bg={rowBg} onMouseDown={onSelect} onMouseOver={() => onHoverChange(true)} onMouseOut={() => onHoverChange(false)}>
+					<span fg={display.indicatorFg}>{fitCell(reviewIcon(pullRequest), REVIEW_WIDTH)}</span>
+					<span> </span>
+					<span fg={display.numberFg}>
+						<MatchedCell text={`#${pullRequest.number}`} width={numWidth} query={filterText} align="right" />
+					</span>
+					<span> </span>
+					<span>
+						<MatchedCell text={pullRequest.title} width={titleWidth} query={filterText} />
+					</span>
+					<span fg={display.checkFg}>{fitCell(display.checkText, CHECK_WIDTH, "right")}</span>
+				</TextLine>
+				<TextLine width={contentWidth} bg={rowBg} onMouseDown={onSelect} onMouseOver={() => onHoverChange(true)} onMouseOut={() => onHoverChange(false)}>
+					<span fg={colors.muted}>
+						{indent}
+						{fitCell(meta, contentWidth - indent.length)}
+					</span>
+				</TextLine>
+			</box>
+		)
+	}
+
 	const ageText = `${daysOpen(pullRequest.createdAt)}d`
 	const { reviewWidth, checkWidth, ageWidth, numberWidth, titleWidth } = getRowLayout(contentWidth, numWidth, ageColWidth)
 	const rowWidth = reviewWidth + 1 + numberWidth + 1 + titleWidth + checkWidth + ageWidth
 	const fillerWidth = Math.max(0, contentWidth - rowWidth)
-	const display = pullRequestRowDisplay(pullRequest, selected)
-	const rowBg = selected ? colors.selectedBg : hovered ? rowHoverBackground() : undefined
 
 	return (
 		<TextLine width={contentWidth} fg={display.rowFg} bg={rowBg} onMouseDown={onSelect} onMouseOver={() => onHoverChange(true)} onMouseOut={() => onHoverChange(false)}>
@@ -203,6 +239,7 @@ export const PullRequestList = ({
 						numWidth={row.numberWidth}
 						ageColWidth={row.ageWidth}
 						filterText={filterText}
+						kind={row.kind}
 						onSelect={() => onSelectPullRequest(pullRequestUrl)}
 						onHoverChange={(hovered) =>
 							setHoveredUrl((current) => (hovered ? (current === pullRequestUrl ? current : pullRequestUrl) : current === pullRequestUrl ? null : current))
