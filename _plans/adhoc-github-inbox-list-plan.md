@@ -25,7 +25,7 @@ The requested change is to let ghui show pull requests more like the GitHub web 
 - The core view model only knows two shapes today: `Repository` and `Queue` (`packages/core/src/pullRequestViews.ts:3-5`). Queue views are constrained to the hard-coded `pullRequestQueueModes` array (`packages/core/src/domain.ts:8-10`).
 - `pullRequestsAtom` drives every list load. It reads `activeViewAtom`, resolves one `mode` + `repository`, loads one page through `GitHubService.listOpenPullRequestPage`, merges cached details, and stores a flat `PullRequestLoad` with a single `endCursor` / `hasNextPage` pair (`src/App.tsx:290-350`, `packages/core/src/pullRequestLoad.ts:4-9`).
 - `GitHubService.listOpenPullRequestPage` is a single-query API today: repository mode uses `repository.pullRequests`, while queue modes use GitHub search (`packages/core/src/services/GitHubService.ts:650-682`).
-- Queue search strings are built by `searchQuery(mode, repository)`, which currently appends `sort:created-desc` for queue views and has no `updated:` qualifier at all (`packages/core/src/services/GitHubService.ts:459-462`).
+- Queue search strings are built by `searchQuery(mode, repository)`, which currently appends `sort:created-desc` for queue views and has no `updated:` qualifier at all (`packages/core/src/services/GitHubService.ts:459-462`). The current `review` queue qualifier is `review-requested:@me archived:false` (`packages/core/src/domain.ts:20-30`), which is important context because the inbox plan intentionally diverges to `user-review-requested:@me` per your feedback.
 
 ### Current row shape is repository-grouped, single-line, and based on created time
 
@@ -96,7 +96,7 @@ Recommended query strategy:
 
 Representative section query shapes for planning purposes:
 
-- `Needs your review`: `is:pr is:open review-requested:@me updated:>=<cutoff> sort:updated-desc`
+- `Needs your review`: `is:pr is:open user-review-requested:@me updated:>=<cutoff> sort:updated-desc`
 - `Your drafts`: `is:pr is:open author:@me draft:true updated:>=<cutoff> sort:updated-desc`
 - `Waiting for review`: broad authored search (`is:pr is:open author:@me draft:false updated:>=<cutoff> sort:updated-desc`), then client-side classification using `reviewDecision`, `isDraft`, and the section precedence rules below
 - `Needs action`: `is:pr is:open author:@me review:changes_requested updated:>=<cutoff> sort:updated-desc`
@@ -105,6 +105,7 @@ Representative section query shapes for planning purposes:
 Important query-semantics decisions:
 
 - Do **not** rely on negated `review:` search qualifiers for `Waiting for review`; reviewer feedback correctly called out that this is not a safe way to express “awaiting review.” The authoritative assignment should happen client-side after fetch, using GraphQL fields the app already parses or will add (`packages/core/src/services/GitHubService.ts:226-261`).
+- For the direct-review bucket, use `user-review-requested:@me`, not `review-requested:@me`. The existing queue mode uses `review-requested:@me` today (`packages/core/src/domain.ts:24`), but your feedback calls out that this behaves badly with GitHub codeowners/team review behavior, so the inbox plan should intentionally use the user-specific qualifier instead.
 - Do **not** rely on `status:success` for `Ready to merge`; GitHub search `status:` is tied to commit status semantics and can miss modern check-run-only repos. The implementation should instead use the already-planned `statusCheckRollup`-derived `checkStatus` from the fetched PR data (`packages/core/src/services/GitHubService.ts:215-240`, `packages/core/src/services/GitHubService.ts:368-410`).
 
 Inbox section precedence must be explicit in the implementation and tests. For v1, classify each PR into exactly one section using this order:
@@ -128,12 +129,13 @@ Expand the core PR summary shape so the inbox view has enough data to render Git
 Recommended additions to `PullRequestItem` / list query fragments:
 
 - `updatedAt: Date`
-- `isDraft: boolean` (preserve the raw field rather than only deriving `reviewStatus`)
 - `totalCommentsCount: number`
 - `mergeable: Mergeable | null` or equivalent normalized enum
 - `assignees: readonly string[]`
 - `reviewRequests: readonly { readonly type: "user" | "team"; readonly name: string }[]`
 - optionally `latestOpinionatedReviews` in a normalized form if the final section rules need more reviewer detail than `reviewDecision`
+
+Do **not** add a standalone `isDraft` boolean to `PullRequestItem`. The list data already collapses draft state into `reviewStatus: "draft"` through `getReviewStatus()` (`packages/core/src/services/GitHubService.ts:322-326`), and your feedback explicitly prefers reusing that existing signal instead of preserving a duplicate raw field.
 
 Concrete change points:
 
