@@ -38,6 +38,10 @@ export const listNavKeymap = List(
 	{ id: "list.toggle-draft", title: "Toggle draft", keys: ["s", "shift+s"], run: (s) => s.runCommandById("pull.toggle-draft") },
 	{ id: "list.copy", title: "Copy metadata", keys: ["y"], run: (s) => s.runCommandById("pull.copy-metadata") },
 	{ id: "list.detail.open", title: "Open details", keys: ["return"], run: (s) => s.runCommandById("detail.open") },
+	{ id: "list.initiate-review", title: "Initiate AI review", keys: ["i"], run: (s) => s.runCommandById("acp.initiate-review") },
+	{ id: "list.findings-panel", title: "View findings", keys: ["f"], run: (s) => s.runCommandById("acp.findings-panel") },
+	{ id: "list.ask-ai", title: "Ask AI", keys: ["a"], run: (s) => s.runCommandById("acp.ask-ai") },
+	{ id: "list.session-viewer", title: "View sessions", keys: ["v"], run: (s) => s.runCommandById("acp.session-viewer") },
 
 	// Queue mode tabs
 	{ id: "list.next-tab", title: "Next view", keys: ["tab"], run: (s) => s.switchQueueMode(1) },

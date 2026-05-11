@@ -9,6 +9,7 @@ interface WatchParams {
 	readonly sessionId: string
 	readonly headRefOid: string
 	readonly onFinding?: (finding: ReviewFinding) => Effect.Effect<void>
+	readonly initialOffset?: number
 }
 
 export class ReviewWatcher extends Context.Service<
@@ -76,7 +77,7 @@ export class ReviewWatcher extends Context.Service<
 
 			const watch = (params: WatchParams): Effect.Effect<never> => {
 				const findingsPath = `${params.reviewDir}/findings.jsonl`
-				let lastOffset = 0
+				let lastOffset = params.initialOffset ?? 0
 				return Effect.forever(
 					Effect.gen(function* () {
 						const { lines, newOffset } = readNewLines(findingsPath, lastOffset)

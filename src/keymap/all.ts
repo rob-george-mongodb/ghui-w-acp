@@ -16,6 +16,13 @@ import { openRepositoryModalKeymap, type OpenRepositoryModalCtx } from "./openRe
 import { pullRequestStateModalKeymap, type PullRequestStateModalCtx } from "./pullRequestStateModal.ts"
 import { submitReviewModalKeymap, type SubmitReviewModalCtx } from "./submitReviewModal.ts"
 import { themeModalKeymap, type ThemeModalCtx } from "./themeModal.ts"
+import { findingsPanelKeymap, type FindingsPanelCtx } from "./findingsPanel.ts"
+import { askAIPanelKeymap, type AskAIPanelCtx } from "./askAIPanel.ts"
+import { sessionViewerPanelKeymap, type SessionViewerPanelCtx } from "./sessionViewerPanel.ts"
+import { initiateReviewModalKeymap, type InitiateReviewModalCtx } from "./initiateReviewModal.ts"
+import { findingEditModalKeymap, type FindingEditModalCtx } from "./findingEditModal.ts"
+import { humanCommentModalKeymap, type HumanCommentModalCtx } from "./humanCommentModal.ts"
+import { postFindingsModalKeymap, type PostFindingsModalCtx } from "./postFindingsModal.ts"
 
 export interface AppCtx {
 	// Active flags
@@ -35,6 +42,13 @@ export interface AppCtx {
 	readonly diffFullView: boolean
 	readonly detailFullView: boolean
 	readonly commentsViewActive: boolean
+	readonly initiateReviewModalActive?: boolean
+	readonly findingEditModalActive?: boolean
+	readonly humanCommentModalActive?: boolean
+	readonly postFindingsModalActive?: boolean
+	readonly findingsPanelActive?: boolean
+	readonly askAIPanelActive?: boolean
+	readonly sessionViewerPanelActive?: boolean
 
 	// True whenever a modal/mode swallows raw text input (so q-quit, etc. are
 	// disabled inside text-editing contexts).
@@ -58,6 +72,13 @@ export interface AppCtx {
 	readonly detail: DetailViewCtx
 	readonly commentsView: CommentsViewCtx
 	readonly listNav: ListNavCtx
+	readonly initiateReviewModal?: InitiateReviewModalCtx
+	readonly findingEditModal?: FindingEditModalCtx
+	readonly humanCommentModal?: HumanCommentModalCtx
+	readonly postFindingsModal?: PostFindingsModalCtx
+	readonly findingsPanel?: FindingsPanelCtx
+	readonly askAIPanel?: AskAIPanelCtx
+	readonly sessionViewerPanel?: SessionViewerPanelCtx
 
 	// Always-on / app-level
 	readonly openCommandPalette: () => void
@@ -78,9 +99,13 @@ const modalActive = (a: AppCtx): boolean =>
 	a.openRepositoryModalActive ||
 	a.commentModalActive ||
 	a.deleteCommentModalActive ||
-	a.commandPaletteActive
+	a.commandPaletteActive ||
+	!!a.initiateReviewModalActive ||
+	!!a.findingEditModalActive ||
+	!!a.humanCommentModalActive ||
+	!!a.postFindingsModalActive
 
-const inListMode = (a: AppCtx): boolean => !modalActive(a) && !a.filterMode && !a.diffFullView && !a.detailFullView && !a.commentsViewActive
+const inListMode = (a: AppCtx): boolean => !modalActive(a) && !a.filterMode && !a.diffFullView && !a.detailFullView && !a.commentsViewActive && !a.findingsPanelActive && !a.askAIPanelActive && !a.sessionViewerPanelActive
 
 export const appKeymap = App(
 	// Always-on: command palette opener
@@ -117,10 +142,19 @@ export const appKeymap = App(
 	commandPaletteKeymap.scope((a) => a.commandPaletteActive && a.commandPalette),
 	filterModeKeymap.scope((a) => a.filterMode && a.filterModeCtx),
 
+	// ACP modal layers
+	initiateReviewModalKeymap.scope((a) => a.initiateReviewModalActive && a.initiateReviewModal),
+	findingEditModalKeymap.scope((a) => a.findingEditModalActive && a.findingEditModal),
+	humanCommentModalKeymap.scope((a) => a.humanCommentModalActive && a.humanCommentModal),
+	postFindingsModalKeymap.scope((a) => a.postFindingsModalActive && a.postFindingsModal),
+
 	// Full-view layers (only when no modal is on top)
 	diffViewKeymap.scope((a) => a.diffFullView && !modalActive(a) && a.diff),
 	detailViewKeymap.scope((a) => a.detailFullView && !modalActive(a) && a.detail),
 	commentsViewKeymap.scope((a) => a.commentsViewActive && !modalActive(a) && a.commentsView),
+	findingsPanelKeymap.scope((a) => a.findingsPanelActive && !modalActive(a) && a.findingsPanel),
+	askAIPanelKeymap.scope((a) => a.askAIPanelActive && !modalActive(a) && a.askAIPanel),
+	sessionViewerPanelKeymap.scope((a) => a.sessionViewerPanelActive && !modalActive(a) && a.sessionViewerPanel),
 
 	// PR list nav
 	listNavKeymap.scope((a) => inListMode(a) && a.listNav),

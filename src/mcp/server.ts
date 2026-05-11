@@ -101,7 +101,7 @@ export const runMcpServer = async () => {
 			const finding = {
 				id,
 				prKey: PR_KEY ?? "",
-				sessionId: SESSION_ID ?? null,
+				sessionId: getSessionId() || null,
 				source: "ai",
 				title: args?.title ?? null,
 				body: args?.body ?? "",

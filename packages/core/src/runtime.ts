@@ -8,6 +8,9 @@ import { Clipboard } from "./services/Clipboard.js"
 import { CommandRunner } from "./services/CommandRunner.js"
 import { GitHubService } from "./services/GitHubService.js"
 import { MockGitHubService, type MockOptions } from "./services/MockGitHubService.js"
+import { ACPService } from "./services/ACPService.js"
+import { ReviewWatcher } from "./services/ReviewWatcher.js"
+import { WorktreeService } from "./services/WorktreeService.js"
 
 export interface CoreLayerOptions {
 	readonly appConfig: AppConfig
@@ -24,6 +27,9 @@ export const makeCoreLayer = (options: CoreLayerOptions) => {
 	const clipboardLayer = Clipboard.layerNoDeps.pipe(Layer.provide(commandLayer))
 	const browserLayer = BrowserOpener.layerNoDeps.pipe(Layer.provide(commandLayer))
 	const observabilityLayer = Observability.layer
+	const reviewWatcherLayer = ReviewWatcher.layer.pipe(Layer.provide(cacheLayer))
+	const worktreeLayer = WorktreeService.layer.pipe(Layer.provide(cacheLayer), Layer.provide(configLayer), Layer.provide(commandLayer))
+	const acpLayer = ACPService.layer.pipe(Layer.provide(configLayer), Layer.provide(cacheLayer), Layer.provide(reviewWatcherLayer))
 
-	return Layer.mergeAll(githubLayer, cacheLayer, clipboardLayer, browserLayer, commandLayer, configLayer, observabilityLayer)
+	return Layer.mergeAll(githubLayer, cacheLayer, clipboardLayer, browserLayer, commandLayer, configLayer, observabilityLayer, reviewWatcherLayer, worktreeLayer, acpLayer)
 }

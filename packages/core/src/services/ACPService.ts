@@ -31,6 +31,7 @@ interface SessionHandle {
 	accumulator: Accumulator
 	watcherFiber: Fiber.Fiber<unknown, unknown> | null
 	lastWatcherOffset: number
+	lastStopReason: string | null
 }
 
 export class ACPService extends Context.Service<
@@ -172,8 +173,9 @@ export class ACPService extends Context.Service<
 						sessionType,
 						agentName: agentConfig.name,
 						accumulator,
-						watcherFiber: null,
-						lastWatcherOffset: 0,
+					watcherFiber: null,
+					lastWatcherOffset: 0,
+					lastStopReason: null,
 					})
 
 					return session
@@ -204,6 +206,7 @@ export class ACPService extends Context.Service<
 							prKey: handle.prKey,
 							sessionId,
 							headRefOid: "",
+							initialOffset: handle.lastWatcherOffset,
 						})
 						.pipe(Effect.forkChild)
 					handle.watcherFiber = watcherFiber
@@ -217,12 +220,16 @@ export class ACPService extends Context.Service<
 								prompt: [{ type: "text", text }],
 							}),
 						catch: (e) => new ACPError({ cause: e, message: `ACP prompt failed: ${String(e)}` }),
-					})
+					}).pipe(
+						Effect.ensuring(
+							Fiber.interrupt(watcherFiber).pipe(
+								Effect.ignore,
+								Effect.tap(() => Effect.sync(() => { handle.watcherFiber = null })),
+							),
+						),
+					)
 
-					yield* Fiber.interrupt(watcherFiber)
-					handle.watcherFiber = null
-
-					handle.lastWatcherOffset = yield* watcher.finalSweep({
+				handle.lastWatcherOffset = yield* watcher.finalSweep({
 						reviewDir: handle.reviewDir,
 						prKey: handle.prKey,
 						sessionId,
@@ -240,9 +247,9 @@ export class ACPService extends Context.Service<
 						})
 					}
 
-					yield* cache.endSession(sessionId, new Date(), result.stopReason)
+					handle.lastStopReason = result.stopReason
 
-					return { stopReason: result.stopReason }
+				return { stopReason: result.stopReason }
 				})
 
 			const cancelSession = (sessionId: string): Effect.Effect<void, never> =>
@@ -262,6 +269,7 @@ export class ACPService extends Context.Service<
 					if (handle.watcherFiber) {
 						yield* Fiber.interrupt(handle.watcherFiber).pipe(Effect.ignore)
 					}
+					yield* cache.endSession(sessionId, new Date(), handle.lastStopReason ?? undefined).pipe(Effect.ignore)
 					try {
 						handle.proc.kill("SIGTERM")
 					} catch {}

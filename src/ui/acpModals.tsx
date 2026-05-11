@@ -417,9 +417,7 @@ export const AskAIPanel = ({
 	for (const msg of messages) {
 		const wrapped = wrapText(msg.content, wrapWidth)
 		for (let i = 0; i < wrapped.length; i++) {
-			const label = i === 0 ? (msg.role === "user" ? "you" : "ai") : ""
 			messageRows.push({ key: `${msg.id}-${i}`, role: msg.role, text: wrapped[i]! })
-			if (i === 0 && label) messageRows[messageRows.length - 1] = { ...messageRows[messageRows.length - 1]!, key: `${msg.id}-${i}` }
 		}
 	}
 

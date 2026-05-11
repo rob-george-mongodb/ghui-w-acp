@@ -263,6 +263,70 @@ export const initialOpenRepositoryModalState: OpenRepositoryModalState = {
 	error: null,
 }
 
+export interface InitiateReviewModalState {
+	readonly prRepository: string
+	readonly prNumber: number
+	readonly prTitle: string
+	readonly loading: boolean
+	readonly error: string | null
+}
+
+export interface FindingEditModalState {
+	readonly findingId: string
+	readonly body: string
+	readonly cursor: number
+	readonly running: boolean
+	readonly error: string | null
+}
+
+export interface HumanCommentModalState {
+	readonly prKey: string
+	readonly body: string
+	readonly cursor: number
+	readonly running: boolean
+	readonly error: string | null
+}
+
+export interface PostFindingsModalState {
+	readonly prKey: string
+	readonly selectedIndex: number
+	readonly running: boolean
+	readonly error: string | null
+	readonly staleness: boolean
+}
+
+export const initialInitiateReviewModalState: InitiateReviewModalState = {
+	prRepository: "",
+	prNumber: 0,
+	prTitle: "",
+	loading: false,
+	error: null,
+}
+
+export const initialFindingEditModalState: FindingEditModalState = {
+	findingId: "",
+	body: "",
+	cursor: 0,
+	running: false,
+	error: null,
+}
+
+export const initialHumanCommentModalState: HumanCommentModalState = {
+	prKey: "",
+	body: "",
+	cursor: 0,
+	running: false,
+	error: null,
+}
+
+export const initialPostFindingsModalState: PostFindingsModalState = {
+	prKey: "",
+	selectedIndex: 0,
+	running: false,
+	error: null,
+	staleness: false,
+}
+
 export type Modal = Data.TaggedEnum<{
 	None: {}
 	Label: LabelModalState
@@ -277,6 +341,10 @@ export type Modal = Data.TaggedEnum<{
 	Theme: ThemeModalState
 	CommandPalette: CommandPaletteState
 	OpenRepository: OpenRepositoryModalState
+	InitiateReview: InitiateReviewModalState
+	FindingEdit: FindingEditModalState
+	HumanComment: HumanCommentModalState
+	PostFindings: PostFindingsModalState
 }>
 
 export const Modal = Data.taggedEnum<Modal>()
@@ -298,6 +366,10 @@ export const modalInitialStates = {
 	Theme: initialThemeModalState,
 	CommandPalette: initialCommandPaletteState,
 	OpenRepository: initialOpenRepositoryModalState,
+	InitiateReview: initialInitiateReviewModalState,
+	FindingEdit: initialFindingEditModalState,
+	HumanComment: initialHumanCommentModalState,
+	PostFindings: initialPostFindingsModalState,
 } as const satisfies { [Tag in Exclude<ModalTag, "None">]: ModalState<Tag> }
 
 export const OpenRepositoryModal = ({

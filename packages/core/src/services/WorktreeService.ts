@@ -90,8 +90,12 @@ export class WorktreeService extends Context.Service<
 					const entry = worktrees.find((w) => w.prKey === prKey)
 					if (!entry) return
 
-					yield* runner.run("git", ["worktree", "remove", "--force", entry.worktreePath]).pipe(Effect.ignore)
-					yield* cache.deleteWorktree(prKey)
+				const repository = prKey.split("#")[0] ?? ""
+				const repoPath = config.jsonConfig.repoMappings?.[repository]
+				if (repoPath) {
+					yield* runner.run("git", ["-C", repoPath, "worktree", "remove", "--force", entry.worktreePath]).pipe(Effect.ignore)
+				}
+				yield* cache.deleteWorktree(prKey)
 				})
 
 			const list = (): Effect.Effect<readonly ReviewWorktree[], WorktreeError> =>
