@@ -53,6 +53,7 @@ export const MergeControls = ({ repo, number }: MergeControlsProps) => {
 	if (mergeInfo.state !== "open") return null
 
 	const allowedMethods = mergeMethods ? allowedMergeMethodList(mergeMethods) : []
+	if (allowedMethods.length === 0) return null
 	const kinds = availableMergeKinds(mergeInfo)
 	const effectiveMethod = allowedMethods.includes(selectedMethod) ? selectedMethod : allowedMethods[0]
 

@@ -4,6 +4,8 @@ import type { PullRequestItem, PullRequestView } from "@ghui/core"
 import { pullRequestQueueModes, pullRequestQueueLabels } from "@ghui/core"
 import { coreBridge } from "../hooks/useCoreBridge.js"
 import { PRListItem } from "./PRListItem.js"
+import { SearchBar } from "./SearchBar.js"
+import { RepoSelector } from "./RepoSelector.js"
 
 interface PRListProps {
 	activeView: PullRequestView
@@ -61,16 +63,12 @@ export const PRList = ({ activeView, selectedPR, onSelectPR, onViewChange }: PRL
 				))}
 			</div>
 			<div className="pr-list-toolbar">
-				<input
-					type="text"
-					placeholder="Filter PRs…"
-					value={filter}
-					onChange={(e) => setFilter(e.target.value)}
-				/>
+				<SearchBar value={filter} onChange={setFilter} />
 				<button onClick={() => queryClient.invalidateQueries({ queryKey: ["pr:list"] })}>
 					↻
 				</button>
 			</div>
+			<RepoSelector onViewChange={onViewChange} />
 			<div className="pr-list-items">
 				{isLoading && <div className="loading-message">Loading…</div>}
 				{error && <div className="error-message">Failed to load: {String(error)}</div>}

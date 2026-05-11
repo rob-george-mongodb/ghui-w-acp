@@ -1,5 +1,5 @@
 import type { ElectronAPI } from "../../preload/index.js"
-import type { IpcChannels } from "../../shared/ipcProtocol.js"
+import type { IpcChannels, IpcError, IpcResult } from "../../shared/ipcProtocol.js"
 
 declare global {
 	interface Window {
@@ -7,8 +7,23 @@ declare global {
 	}
 }
 
-const invoke = <C extends keyof IpcChannels>(channel: C, ...args: IpcChannels[C]["args"]): Promise<IpcChannels[C]["result"]> =>
-	window.electronAPI.invoke(channel, ...args)
+export class IpcBridgeError extends Error {
+	readonly _tag: string
+	readonly retryAfterSeconds: number | undefined
+
+	constructor(ipcError: IpcError) {
+		super(ipcError.message)
+		this.name = "IpcBridgeError"
+		this._tag = ipcError._tag
+		this.retryAfterSeconds = ipcError.retryAfterSeconds
+	}
+}
+
+const invoke = async <C extends keyof IpcChannels>(channel: C, ...args: IpcChannels[C]["args"]): Promise<IpcChannels[C]["result"]> => {
+	const result: IpcResult<IpcChannels[C]["result"]> = await window.electronAPI.invoke(channel, ...args)
+	if (!result.success) throw new IpcBridgeError(result.error)
+	return result.data
+}
 
 export const coreBridge = {
 	listPullRequests: (...args: IpcChannels["pr:list"]["args"]) => invoke("pr:list", ...args),

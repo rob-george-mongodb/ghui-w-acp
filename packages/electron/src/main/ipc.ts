@@ -10,7 +10,7 @@ import {
 	AppConfigService,
 } from "@ghui/core/node"
 import type { PullRequestView } from "@ghui/core/node"
-import type { IpcChannel, IpcChannels, IpcError } from "../shared/ipcProtocol.js"
+import type { IpcChannel, IpcChannels, IpcError, IpcResult } from "../shared/ipcProtocol.js"
 import { makeElectronCoreLayer } from "./coreLayer.js"
 
 const serializeError = (error: unknown): IpcError => {
@@ -30,11 +30,12 @@ export const setupIpcHandlers = (appConfig: AppConfig) => {
 	const runtime = ManagedRuntime.make(coreLayer)
 
 	const handle = <C extends IpcChannel>(channel: C, handler: (...args: IpcChannels[C]["args"]) => Effect.Effect<IpcChannels[C]["result"], any, any>) => {
-		ipcMain.handle(channel, async (_event, ...args: unknown[]) => {
+		ipcMain.handle(channel, async (_event, ...args: unknown[]): Promise<IpcResult<IpcChannels[C]["result"]>> => {
 			try {
-				return await runtime.runPromise(handler(...(args as IpcChannels[C]["args"])))
+				const data = await runtime.runPromise(handler(...(args as IpcChannels[C]["args"])))
+				return { success: true, data }
 			} catch (error) {
-				throw serializeError(error)
+				return { success: false, error: serializeError(error) }
 			}
 		})
 	}

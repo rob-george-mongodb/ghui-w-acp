@@ -42,3 +42,5 @@ export type IpcChannels = {
 export type IpcChannel = keyof IpcChannels
 
 export type IpcError = { _tag: string; message: string; retryAfterSeconds?: number | undefined }
+
+export type IpcResult<T> = { success: true; data: T } | { success: false; error: IpcError }

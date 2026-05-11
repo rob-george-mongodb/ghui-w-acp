@@ -13,6 +13,12 @@ export const SearchBar = ({ value, onChange }: SearchBarProps) => {
 		setLocal(value)
 	}, [value])
 
+	useEffect(() => {
+		return () => {
+			if (timerRef.current) clearTimeout(timerRef.current)
+		}
+	}, [])
+
 	const handleChange = (next: string) => {
 		setLocal(next)
 		if (timerRef.current) clearTimeout(timerRef.current)
