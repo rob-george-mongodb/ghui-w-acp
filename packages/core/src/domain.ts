@@ -5,7 +5,7 @@ export type LoadStatus = "loading" | "ready" | "error"
 export const pullRequestStates = ["open", "closed", "merged"] as const
 export type PullRequestState = (typeof pullRequestStates)[number]
 
-export const pullRequestQueueModes = ["authored", "review", "assigned", "mentioned"] as const
+export const pullRequestQueueModes = ["authored", "review", "assigned", "mentioned", "inbox"] as const
 export type PullRequestUserQueueMode = (typeof pullRequestQueueModes)[number]
 export type PullRequestQueueMode = "repository" | PullRequestUserQueueMode
 
@@ -15,6 +15,7 @@ export const pullRequestQueueLabels = {
 	review: "review requested",
 	assigned: "assigned",
 	mentioned: "mentioned",
+	inbox: "inbox",
 } as const satisfies Record<PullRequestQueueMode, string>
 
 export const pullRequestQueueSearchQualifier = (mode: PullRequestQueueMode, repository: string | null) => {
@@ -24,6 +25,7 @@ export const pullRequestQueueSearchQualifier = (mode: PullRequestQueueMode, repo
 		review: "review-requested:@me",
 		assigned: "assignee:@me",
 		mentioned: "mentions:@me",
+		inbox: "author:@me",
 	} as const satisfies Record<PullRequestQueueMode, string>
 	const qualifier = qualifiers[mode]
 	return mode === "repository" && repository ? qualifier : `${qualifier} archived:false`
@@ -152,6 +154,11 @@ export interface PullRequestItem {
 	readonly detailLoaded: boolean
 	readonly createdAt: Date
 	readonly closedAt: Date | null
+	readonly updatedAt: Date
+	readonly totalCommentsCount: number
+	readonly mergeable: Mergeable | null
+	readonly assignees: readonly { readonly login: string }[]
+	readonly reviewRequests: readonly { readonly type: "user" | "team"; readonly name: string }[]
 	readonly url: string
 }
 

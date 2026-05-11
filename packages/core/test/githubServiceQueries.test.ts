@@ -15,10 +15,15 @@ import {
 	STATUS_CHECKS_LIMIT,
 } from "@ghui/core"
 
-const testAppConfig = (overrides: Partial<{ prFetchLimit: number; prPageSize: number }> = {}) =>
+const testAppConfig = (overrides: Partial<{ prFetchLimit: number; prPageSize: number; prUpdatedSinceWindow: string }> = {}) =>
 	Layer.succeed(
 		AppConfigService,
-		AppConfigService.of({ prFetchLimit: overrides.prFetchLimit ?? 200, prPageSize: overrides.prPageSize ?? 50, cachePath: null }),
+		AppConfigService.of({
+			prFetchLimit: overrides.prFetchLimit ?? 200,
+			prPageSize: overrides.prPageSize ?? 50,
+			cachePath: null,
+			prUpdatedSinceWindow: (overrides.prUpdatedSinceWindow ?? "1m") as "1m" | "3m" | "1y" | "any",
+		}),
 	)
 
 interface RecordedCall {
@@ -77,12 +82,17 @@ const makeSummaryNode = (overrides: Partial<Record<string, unknown>> = {}) => ({
 	state: "OPEN",
 	merged: false,
 	createdAt: "2026-01-01T00:00:00Z",
+	updatedAt: "2026-01-15T00:00:00Z",
 	closedAt: null,
 	url: "https://github.com/owner/repo/pull/1",
 	author: { login: "testuser" },
 	headRefOid: "abc123",
 	headRefName: "feature-branch",
 	repository: { nameWithOwner: "owner/repo" },
+	totalCommentsCount: 0,
+	mergeable: "MERGEABLE",
+	assignees: { nodes: [] },
+	reviewRequests: { nodes: [] },
 	...overrides,
 })
 
@@ -114,6 +124,21 @@ const makeRepoResponse = (nodes: unknown[], hasNextPage = false, endCursor: stri
 					pageInfo: { hasNextPage, endCursor },
 				},
 			},
+		},
+	})
+
+const makeInboxResponse = (sections: {
+	reviewSearch?: unknown[]
+	draftsSearch?: unknown[]
+	actionSearch?: unknown[]
+	authoredSearch?: unknown[]
+}) =>
+	JSON.stringify({
+		data: {
+			reviewSearch: { nodes: sections.reviewSearch ?? [], pageInfo: { hasNextPage: false, endCursor: null } },
+			draftsSearch: { nodes: sections.draftsSearch ?? [], pageInfo: { hasNextPage: false, endCursor: null } },
+			actionSearch: { nodes: sections.actionSearch ?? [], pageInfo: { hasNextPage: false, endCursor: null } },
+			authoredSearch: { nodes: sections.authoredSearch ?? [], pageInfo: { hasNextPage: false, endCursor: null } },
 		},
 	})
 
@@ -176,6 +201,36 @@ describe("parsePullRequestSummary", () => {
 		const result = parsePullRequestSummary(node as any)
 		expect(result.checkStatus).toBe("passing")
 		expect(result.checks).toHaveLength(2)
+	})
+
+	test("parses new inbox fields", () => {
+		const node = makeSummaryNode({
+			updatedAt: "2026-01-15T00:00:00Z",
+			totalCommentsCount: 3,
+			mergeable: "MERGEABLE",
+			assignees: { nodes: [{ login: "assignee1" }] },
+			reviewRequests: { nodes: [{ requestedReviewer: { __typename: "User", login: "reviewer1" } }] },
+		})
+		const result = parsePullRequestSummary(node as any)
+		expect(result.updatedAt).toEqual(new Date("2026-01-15T00:00:00Z"))
+		expect(result.totalCommentsCount).toBe(3)
+		expect(result.mergeable).toBe("mergeable")
+		expect(result.assignees).toEqual([{ login: "assignee1" }])
+		expect(result.reviewRequests).toEqual([{ type: "user", name: "reviewer1" }])
+	})
+
+	test("parses null mergeable as null", () => {
+		const result = parsePullRequestSummary(makeSummaryNode({ mergeable: null }) as any)
+		expect(result.mergeable).toBeNull()
+	})
+
+	test("parses team review request", () => {
+		const result = parsePullRequestSummary(
+			makeSummaryNode({
+				reviewRequests: { nodes: [{ requestedReviewer: { __typename: "Team", slug: "my-team" } }] },
+			}) as any,
+		)
+		expect(result.reviewRequests).toEqual([{ type: "team", name: "my-team" }])
 	})
 })
 
@@ -439,5 +494,57 @@ describe("rate limit error handling", () => {
 		)
 
 		expect(caughtTag).toBe("RateLimitError")
+	})
+})
+
+describe("GitHubService.listOpenPullRequestPage (inbox)", () => {
+	test("routes inbox mode to multi-search and returns merged deduped results", async () => {
+		const pr1 = makeSummaryNode({ number: 1 })
+		const pr2 = makeSummaryNode({ number: 2, reviewDecision: null, url: "https://github.com/owner/repo/pull/2" })
+		const response = makeInboxResponse({
+			reviewSearch: [pr1],
+			authoredSearch: [pr1, pr2],
+		})
+		const recorder: RecordedCall[] = []
+		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(Layer.merge(fakeCommandRunner(response, recorder), testAppConfig())))
+
+		const page = await runWith(
+			GitHubService.use((gh) => gh.listOpenPullRequestPage({ mode: "inbox", repository: null, cursor: null, pageSize: 50 })),
+			layer,
+		)
+
+		expect(page.items).toHaveLength(2)
+		expect(page.hasNextPage).toBe(false)
+		expect(page.endCursor).toBeNull()
+	})
+
+	test("inbox query includes updated:>= filter when prUpdatedSinceWindow is not any", async () => {
+		const response = makeInboxResponse({})
+		const recorder: RecordedCall[] = []
+		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(Layer.merge(fakeCommandRunner(response, recorder), testAppConfig({ prUpdatedSinceWindow: "1m" }))))
+
+		await runWith(
+			GitHubService.use((gh) => gh.listOpenPullRequestPage({ mode: "inbox", repository: null, cursor: null, pageSize: 50 })),
+			layer,
+		)
+
+		const args = recorder[0]!.args
+		const reviewQueryArg = args.find((a) => a.startsWith("reviewQuery="))
+		expect(reviewQueryArg).toMatch(/updated:>=\d{4}-\d{2}-\d{2}/)
+	})
+
+	test("inbox query omits updated filter when prUpdatedSinceWindow is any", async () => {
+		const response = makeInboxResponse({})
+		const recorder: RecordedCall[] = []
+		const layer = GitHubService.layerNoDeps.pipe(Layer.provide(Layer.merge(fakeCommandRunner(response, recorder), testAppConfig({ prUpdatedSinceWindow: "any" }))))
+
+		await runWith(
+			GitHubService.use((gh) => gh.listOpenPullRequestPage({ mode: "inbox", repository: null, cursor: null, pageSize: 50 })),
+			layer,
+		)
+
+		const args = recorder[0]!.args
+		const reviewQueryArg = args.find((a) => a.startsWith("reviewQuery="))
+		expect(reviewQueryArg).not.toMatch(/updated:>=/)
 	})
 })

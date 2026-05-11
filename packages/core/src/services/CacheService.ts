@@ -37,6 +37,13 @@ const CachedCheckItemSchema = Schema.Struct({
 	conclusion: Schema.NullOr(CheckConclusionSchema),
 })
 
+const CachedMergeableSchema = Schema.Literals(["mergeable", "conflicting", "unknown"] as const)
+const CachedAssigneeSchema = Schema.Struct({ login: Schema.String })
+const CachedReviewRequestSchema = Schema.Struct({
+	type: Schema.Literals(["user", "team"] as const),
+	name: Schema.String,
+})
+
 const CachedPullRequestItemSchema = Schema.Struct({
 	repository: Schema.String,
 	author: Schema.String,
@@ -59,6 +66,11 @@ const CachedPullRequestItemSchema = Schema.Struct({
 	createdAt: Schema.String,
 	closedAt: Schema.NullOr(Schema.String),
 	url: Schema.String,
+	updatedAt: Schema.optionalKey(Schema.String),
+	totalCommentsCount: Schema.optionalKey(Schema.Number),
+	mergeable: Schema.optionalKey(Schema.NullOr(CachedMergeableSchema)),
+	assignees: Schema.optionalKey(Schema.Array(CachedAssigneeSchema)),
+	reviewRequests: Schema.optionalKey(Schema.Array(CachedReviewRequestSchema)),
 })
 
 const CachedPullRequestViewSchema = Schema.Union([
@@ -104,6 +116,7 @@ const cachedPullRequestToDomain = (cached: CachedPullRequestItem): PullRequestIt
 	if (!createdAt) return null
 	const closedAt = cached.closedAt === null ? null : parseDate(cached.closedAt)
 	if (cached.closedAt !== null && !closedAt) return null
+	const updatedAt = cached.updatedAt ? (parseDate(cached.updatedAt) ?? createdAt) : createdAt
 	return {
 		repository: cached.repository,
 		author: cached.author,
@@ -124,8 +137,13 @@ const cachedPullRequestToDomain = (cached: CachedPullRequestItem): PullRequestIt
 		autoMergeEnabled: cached.autoMergeEnabled,
 		detailLoaded: cached.detailLoaded,
 		createdAt,
+		updatedAt,
 		closedAt,
 		url: cached.url,
+		totalCommentsCount: cached.totalCommentsCount ?? 0,
+		mergeable: cached.mergeable ?? null,
+		assignees: cached.assignees ? [...cached.assignees] : [],
+		reviewRequests: cached.reviewRequests ? [...cached.reviewRequests] : [],
 	}
 }
 
@@ -149,8 +167,13 @@ const encodePullRequest = (pullRequest: PullRequestItem): CachedPullRequestItem 
 	autoMergeEnabled: pullRequest.autoMergeEnabled,
 	detailLoaded: pullRequest.detailLoaded,
 	createdAt: pullRequest.createdAt.toISOString(),
+	updatedAt: pullRequest.updatedAt.toISOString(),
 	closedAt: pullRequest.closedAt?.toISOString() ?? null,
 	url: pullRequest.url,
+	totalCommentsCount: pullRequest.totalCommentsCount,
+	mergeable: pullRequest.mergeable,
+	assignees: [...pullRequest.assignees],
+	reviewRequests: [...pullRequest.reviewRequests],
 })
 
 const decodePullRequestJson = (json: string): Effect.Effect<PullRequestItem, CacheError> =>

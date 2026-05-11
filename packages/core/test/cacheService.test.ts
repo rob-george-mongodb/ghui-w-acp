@@ -43,8 +43,13 @@ const pullRequest = (number: number, overrides: Partial<PullRequestItem> = {}): 
 	autoMergeEnabled: false,
 	detailLoaded: true,
 	createdAt: new Date(`2026-01-${String(number).padStart(2, "0")}T00:00:00Z`),
+	updatedAt: new Date(`2026-01-${String(number).padStart(2, "0")}T12:00:00Z`),
 	closedAt: null,
 	url: `https://github.com/owner/repo/pull/${number}`,
+	totalCommentsCount: 0,
+	mergeable: null,
+	assignees: [],
+	reviewRequests: [],
 	...overrides,
 })
 
@@ -220,5 +225,76 @@ describe("CacheService", () => {
 		)
 
 		expect(cached).toBeNull()
+	})
+
+	test("round-trips new inbox fields through cache", async () => {
+		const filename = await tempCachePath()
+		const pr = pullRequest(5, {
+			updatedAt: new Date("2026-01-15T00:00:00Z"),
+			totalCommentsCount: 5,
+			mergeable: "mergeable",
+			assignees: [{ login: "assignee1" }],
+			reviewRequests: [{ type: "user", name: "reviewer1" }],
+		})
+
+		await runCache(
+			filename,
+			Effect.gen(function* () {
+				const cache = yield* CacheService
+				yield* cache.upsertPullRequest(pr)
+			}),
+		)
+
+		const cached = await runCache(
+			filename,
+			Effect.gen(function* () {
+				const cache = yield* CacheService
+				return yield* cache.readPullRequest({ repository: "owner/repo", number: 5 })
+			}),
+		)
+
+		expect(cached?.updatedAt).toEqual(new Date("2026-01-15T00:00:00Z"))
+		expect(cached?.totalCommentsCount).toBe(5)
+		expect(cached?.mergeable).toBe("mergeable")
+		expect(cached?.assignees).toEqual([{ login: "assignee1" }])
+		expect(cached?.reviewRequests).toEqual([{ type: "user", name: "reviewer1" }])
+	})
+
+	test("old cached rows without new inbox fields decode with safe defaults", async () => {
+		const filename = await tempCachePath()
+
+		await runCache(
+			filename,
+			Effect.gen(function* () {
+				const cache = yield* CacheService
+				yield* cache.upsertPullRequest(pullRequest(6))
+			}),
+		)
+
+		const db = new Database(filename)
+		const row = db.query("SELECT data_json FROM pull_requests WHERE pr_key = 'owner/repo#6'").get() as { data_json: string }
+		const data = JSON.parse(row.data_json) as Record<string, unknown>
+		delete data["updatedAt"]
+		delete data["totalCommentsCount"]
+		delete data["mergeable"]
+		delete data["assignees"]
+		delete data["reviewRequests"]
+		db.run("UPDATE pull_requests SET data_json = ? WHERE pr_key = 'owner/repo#6'", [JSON.stringify(data)])
+		db.close()
+
+		const cached = await runCache(
+			filename,
+			Effect.gen(function* () {
+				const cache = yield* CacheService
+				return yield* cache.readPullRequest({ repository: "owner/repo", number: 6 })
+			}),
+		)
+
+		expect(cached).not.toBeNull()
+		expect(cached?.updatedAt).toBeInstanceOf(Date)
+		expect(cached?.totalCommentsCount).toBe(0)
+		expect(cached?.mergeable).toBeNull()
+		expect(cached?.assignees).toEqual([])
+		expect(cached?.reviewRequests).toEqual([])
 	})
 })

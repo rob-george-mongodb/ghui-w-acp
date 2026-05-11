@@ -25,6 +25,10 @@ describe("pullRequestQueueSearchQualifier", () => {
 	test("mentioned mode → mentions:@me excluding archived repositories", () => {
 		expect(pullRequestQueueSearchQualifier("mentioned", null)).toBe("mentions:@me archived:false")
 	})
+
+	test("inbox mode → author:@me excluding archived repositories", () => {
+		expect(pullRequestQueueSearchQualifier("inbox", null)).toBe("author:@me archived:false")
+	})
 })
 
 describe("viewCacheKey", () => {
@@ -35,5 +39,9 @@ describe("viewCacheKey", () => {
 	test("queue view key is the mode literal", () => {
 		expect(viewCacheKey({ _tag: "Queue", mode: "authored", repository: null })).toBe("authored")
 		expect(viewCacheKey({ _tag: "Queue", mode: "review", repository: "owner/name" })).toBe("review")
+	})
+
+	test("inbox queue view key is 'inbox'", () => {
+		expect(viewCacheKey({ _tag: "Queue", mode: "inbox", repository: null })).toBe("inbox")
 	})
 })

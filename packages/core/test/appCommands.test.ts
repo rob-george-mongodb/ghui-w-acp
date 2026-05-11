@@ -22,7 +22,12 @@ const selectedPullRequest: PullRequestItem = {
 	autoMergeEnabled: false,
 	detailLoaded: true,
 	createdAt: new Date("2026-01-01T00:00:00Z"),
+	updatedAt: new Date("2026-01-10T00:00:00Z"),
 	closedAt: null,
+	totalCommentsCount: 0,
+	mergeable: null,
+	assignees: [],
+	reviewRequests: [],
 	url: "https://github.com/owner/repo/pull/42",
 }
 

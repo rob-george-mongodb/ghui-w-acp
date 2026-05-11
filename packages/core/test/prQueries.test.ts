@@ -21,7 +21,12 @@ const makePR = (number: number, url?: string): PullRequestItem => ({
 	autoMergeEnabled: false,
 	detailLoaded: false,
 	createdAt: new Date("2026-01-01"),
+	updatedAt: new Date("2026-01-01"),
 	closedAt: null,
+	totalCommentsCount: 0,
+	mergeable: null,
+	assignees: [],
+	reviewRequests: [],
 	url: url ?? `https://github.com/owner/repo/pull/${number}`,
 })
 

@@ -18,6 +18,7 @@ import {
 	type ReviewStatus,
 	type SubmitPullRequestReviewInput,
 } from "../domain.js"
+import { inboxUpdatedSinceCutoff } from "../inbox.js"
 import { mergeActionCliArgs } from "../mergeActions.js"
 import { CommandError, CommandRunner, RateLimitError, type JsonParseError } from "./CommandRunner.js"
 
@@ -50,6 +51,14 @@ const RawStatusCheckRollupSchema = Schema.Struct({
 	contexts: Schema.Struct({ nodes: Schema.Array(RawCheckContextSchema) }),
 })
 
+const RawReviewRequestNodeSchema = Schema.Struct({
+	requestedReviewer: Schema.NullOr(
+		Schema.Union([Schema.Struct({ __typename: Schema.tag("User"), login: Schema.String }), Schema.Struct({ __typename: Schema.tag("Team"), slug: Schema.String })]).pipe(
+			Schema.toTaggedUnion("__typename"),
+		),
+	),
+})
+
 const RawPullRequestSummaryFields = {
 	number: Schema.Number,
 	title: Schema.String,
@@ -59,12 +68,17 @@ const RawPullRequestSummaryFields = {
 	state: Schema.String,
 	merged: Schema.Boolean,
 	createdAt: Schema.String,
+	updatedAt: Schema.String,
 	closedAt: OptionalNullableString,
 	url: Schema.String,
 	author: RawAuthorSchema,
 	headRefOid: Schema.String,
 	headRefName: Schema.String,
 	repository: RawRepositorySchema,
+	totalCommentsCount: Schema.Number,
+	mergeable: NullableString,
+	assignees: Schema.Struct({ nodes: Schema.Array(Schema.Struct({ login: Schema.String })) }),
+	reviewRequests: Schema.Struct({ nodes: Schema.Array(RawReviewRequestNodeSchema) }),
 } as const
 
 const RawPullRequestSummaryNodeSchema = Schema.Struct({
@@ -237,7 +251,12 @@ const SUMMARY_FIELDS_FRAGMENT = `
         author { login }
         headRefOid
         headRefName
-        repository { nameWithOwner }${STATUS_CHECK_FRAGMENT}`
+        repository { nameWithOwner }
+        totalCommentsCount
+        mergeable
+        updatedAt
+        assignees(first: 10) { nodes { login } }
+        reviewRequests(first: 10) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } } } }${STATUS_CHECK_FRAGMENT}`
 
 const DETAIL_FIELDS_FRAGMENT = `
         number
@@ -258,7 +277,12 @@ const DETAIL_FIELDS_FRAGMENT = `
         headRefOid
         headRefName
         repository { nameWithOwner }
-        labels(first: 20) { nodes { name color } }${STATUS_CHECK_FRAGMENT}`
+        labels(first: 20) { nodes { name color } }
+        totalCommentsCount
+        mergeable
+        updatedAt
+        assignees(first: 10) { nodes { login } }
+        reviewRequests(first: 10) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } } } }${STATUS_CHECK_FRAGMENT}`
 
 const pullRequestSearchQuery = `
 query PullRequests($searchQuery: String!, $first: Int!, $after: String) {
@@ -301,6 +325,53 @@ query RepositoryPullRequests($owner: String!, $name: String!, $first: Int!, $aft
       }
       pageInfo { hasNextPage endCursor }
     }
+  }
+}
+`
+
+const InboxSearchConnectionSchema = Schema.Struct({
+	nodes: Schema.Array(Schema.NullOr(RawPullRequestSummaryNodeSchema)),
+	pageInfo: PageInfoSchema,
+})
+
+const InboxResponseSchema = Schema.Struct({
+	data: Schema.Struct({
+		reviewSearch: InboxSearchConnectionSchema,
+		draftsSearch: InboxSearchConnectionSchema,
+		actionSearch: InboxSearchConnectionSchema,
+		authoredSearch: InboxSearchConnectionSchema,
+	}),
+})
+
+const inboxPullRequestsQuery = `
+query InboxPullRequests($reviewQuery: String!, $draftsQuery: String!, $actionQuery: String!, $authoredQuery: String!, $first: Int!) {
+  reviewSearch: search(query: $reviewQuery, type: ISSUE, first: $first) {
+    nodes {
+      ... on PullRequest {${SUMMARY_FIELDS_FRAGMENT}
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+  draftsSearch: search(query: $draftsQuery, type: ISSUE, first: $first) {
+    nodes {
+      ... on PullRequest {${SUMMARY_FIELDS_FRAGMENT}
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+  actionSearch: search(query: $actionQuery, type: ISSUE, first: $first) {
+    nodes {
+      ... on PullRequest {${SUMMARY_FIELDS_FRAGMENT}
+      }
+    }
+    pageInfo { hasNextPage endCursor }
+  }
+  authoredSearch: search(query: $authoredQuery, type: ISSUE, first: $first) {
+    nodes {
+      ... on PullRequest {${SUMMARY_FIELDS_FRAGMENT}
+      }
+    }
+    pageInfo { hasNextPage endCursor }
   }
 }
 `
@@ -432,8 +503,18 @@ const parsePullRequestSummary = (item: RawPullRequestSummaryNode): PullRequestIt
 		autoMergeEnabled: item.autoMergeRequest !== null,
 		detailLoaded: false,
 		createdAt: new Date(item.createdAt),
+		updatedAt: new Date(item.updatedAt),
 		closedAt: normalizeDate(item.closedAt),
 		url: item.url,
+		totalCommentsCount: item.totalCommentsCount,
+		mergeable: item.mergeable ? normalizeMergeable(item.mergeable) : null,
+		assignees: item.assignees.nodes.map((a) => ({ login: a.login })),
+		reviewRequests: item.reviewRequests.nodes.flatMap((n): { type: "user" | "team"; name: string }[] => {
+			const rv = n.requestedReviewer
+			if (!rv) return []
+			if (rv.__typename === "User") return [{ type: "user" as const, name: rv.login }]
+			return [{ type: "team" as const, name: rv.slug }]
+		}),
 	}
 }
 
@@ -674,10 +755,56 @@ export class GitHubService extends Context.Service<
 				return pullRequestPage(connection, parsePullRequestSummary)
 			})
 
+			const listInboxPullRequestPage = Effect.fn("GitHubService.listInboxPullRequestPage")(function* (input: ListPullRequestPageInput) {
+				const cutoff = inboxUpdatedSinceCutoff(appConfig.prUpdatedSinceWindow)
+				const updatedFilter = cutoff ? ` updated:>=${cutoff}` : ""
+				const reviewQuery = `is:pr is:open user-review-requested:@me archived:false${updatedFilter} sort:updated-desc`
+				const draftsQuery = `is:pr is:open author:@me draft:true archived:false${updatedFilter} sort:updated-desc`
+				const actionQuery = `is:pr is:open author:@me review:changes-requested archived:false${updatedFilter} sort:updated-desc`
+				const authoredQuery = `is:pr is:open author:@me draft:false archived:false${updatedFilter} sort:updated-desc`
+
+				const response = yield* command.runSchema(InboxResponseSchema, "gh", [
+					"api",
+					"graphql",
+					"-f",
+					`query=${inboxPullRequestsQuery}`,
+					"-f",
+					`reviewQuery=${reviewQuery}`,
+					"-f",
+					`draftsQuery=${draftsQuery}`,
+					"-f",
+					`actionQuery=${actionQuery}`,
+					"-f",
+					`authoredQuery=${authoredQuery}`,
+					"-F",
+					`first=${Math.min(input.pageSize, 100)}`,
+				])
+
+				const parseConnection = (connection: { readonly nodes: readonly (RawPullRequestSummaryNode | null)[] }) =>
+					connection.nodes.flatMap((n) => (n ? [parsePullRequestSummary(n)] : []))
+
+				const seen = new Set<string>()
+				const items: PullRequestItem[] = []
+				for (const pr of [
+					...parseConnection(response.data.reviewSearch),
+					...parseConnection(response.data.draftsSearch),
+					...parseConnection(response.data.actionSearch),
+					...parseConnection(response.data.authoredSearch),
+				]) {
+					if (!seen.has(pr.url)) {
+						seen.add(pr.url)
+						items.push(pr)
+					}
+				}
+
+				return { items, endCursor: null, hasNextPage: false } satisfies PullRequestPage
+			})
+
 			const listOpenPullRequestPage = Effect.fn("GitHubService.listOpenPullRequestPage")(function* (input: ListPullRequestPageInput) {
 				const pageSize = Math.max(1, Math.min(100, input.pageSize))
 				const pageInput = { ...input, pageSize }
 				if (pageInput.mode === "repository" && pageInput.repository) return yield* listRepositoryPullRequestPage(pageInput)
+				if (pageInput.mode === "inbox") return yield* listInboxPullRequestPage(pageInput)
 				return yield* listOpenPullRequestSearchPage(pageInput)
 			})
 
