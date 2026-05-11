@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join } from "node:path"
 import { Config, Context, Effect, Layer } from "effect"
@@ -15,11 +16,44 @@ const resolveCachePath = () => {
 	return value && value.length > 0 ? value : defaultCachePath()
 }
 
+interface AcpAgentConfig {
+	readonly name: string
+	readonly command: readonly string[]
+	readonly defaultModel?: string
+}
+
+interface AcpConfig {
+	readonly agents: readonly AcpAgentConfig[]
+	readonly defaultAgent?: string
+}
+
+export interface GhuiJsonConfig {
+	readonly repoMappings?: Record<string, string>
+	readonly acp?: AcpConfig
+	readonly worktreeRoot?: string
+}
+
+const defaultConfigFilePath = () =>
+	join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "ghui", "ghui.json")
+
+const loadJsonConfig = (): GhuiJsonConfig => {
+	const configPath = defaultConfigFilePath()
+	try {
+		const content = readFileSync(configPath, "utf8")
+		return JSON.parse(content) as GhuiJsonConfig
+	} catch {
+		return {}
+	}
+}
+
+export const ghuiJsonConfig: GhuiJsonConfig = loadJsonConfig()
+
 export interface AppConfig {
 	readonly prFetchLimit: number
 	readonly prPageSize: number
 	readonly cachePath: string | null
 	readonly prUpdatedSinceWindow: PullRequestUpdatedSinceWindow
+	readonly jsonConfig: GhuiJsonConfig
 }
 
 export class AppConfigService extends Context.Service<AppConfigService, AppConfig>()("ghui/AppConfig") {}
@@ -35,6 +69,7 @@ const appConfig = Config.all({
 			return (valid as readonly string[]).includes(v) ? (v as PullRequestUpdatedSinceWindow) : "1m"
 		}),
 	),
+	jsonConfig: Config.succeed(ghuiJsonConfig),
 })
 
 export const resolveAppConfig = Effect.gen(function* () {
