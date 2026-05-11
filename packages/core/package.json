@@ -5,7 +5,8 @@
 	"type": "module",
 	"description": "Core primitives shared across ghui packages.",
 	"exports": {
-		".": "./src/index.ts"
+		".": "./src/index.ts",
+		"./node": "./src/index-node.ts"
 	},
 	"scripts": {
 		"test": "bun test test",

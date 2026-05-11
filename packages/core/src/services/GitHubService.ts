@@ -1,5 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect"
-import { AppConfigLive, AppConfigService } from "../config.js"
+import { AppConfigService } from "../config.js"
 import {
 	DiffCommentSide,
 	pullRequestQueueSearchQualifier,
@@ -21,7 +21,6 @@ import {
 import { inboxUpdatedSinceCutoff } from "../inbox.js"
 import { mergeActionCliArgs } from "../mergeActions.js"
 import { CommandError, CommandRunner, RateLimitError, type JsonParseError } from "./CommandRunner.js"
-import { BunCommandRunner } from "./CommandRunnerBun.js"
 
 const NullableString = Schema.NullOr(Schema.String)
 const OptionalNullableString = Schema.optionalKey(NullableString)
@@ -1100,6 +1099,4 @@ export class GitHubService extends Context.Service<
 			})
 		}),
 	)
-
-	static readonly layer = GitHubService.layerNoDeps.pipe(Layer.provide(BunCommandRunner.layer), Layer.provide(AppConfigLive))
 }
