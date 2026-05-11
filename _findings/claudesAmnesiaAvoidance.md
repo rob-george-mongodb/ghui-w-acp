@@ -240,4 +240,8 @@ This is a minor core change but necessary. Will flag to human if they object.
 ## Status
 - ✅ Core refactoring: CommandRunner/CacheService split from Bun impls
 - ✅ Electron scaffold: package, electron-vite, main process, IPC, preload, Node.js CommandRunner
-- 🔄 Starting Phase 3: React web UI components
+- ✅ UI components: PRList, PRDetail, CommentsPane, MergeControls, CommandPalette, SearchBar, RepoSelector, ErrorBoundary
+- ✅ Review fixes: IPC error envelopes, channel allowlist, SearchBar leak, MergeControls undefined guard
+- ✅ Tests: NodeCommandRunner contract tests (6 tests)
+- ✅ Packaging: electron-builder config for macOS
+- All existing tests pass (114 root + 131 keymap + 140 core + 6 electron = 391 tests)
