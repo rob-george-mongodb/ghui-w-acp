@@ -1,9 +1,12 @@
 import { app, BrowserWindow } from "electron"
-
-app.disableHardwareAcceleration()
-import { join } from "node:path"
+import { join, dirname } from "node:path"
+import { fileURLToPath } from "node:url"
 import { setupIpcHandlers } from "./ipc.js"
 import type { AppConfig } from "@ghui/core/node"
+
+app.disableHardwareAcceleration()
+
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 const appConfig: AppConfig = {
 	prFetchLimit: 200,
