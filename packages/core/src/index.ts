@@ -78,6 +78,7 @@ export * from "./themeStore.js"
 
 export { BrowserOpener } from "./services/BrowserOpener.js"
 export { CacheService, CacheError, pullRequestCacheKey, type PullRequestCacheKey } from "./services/CacheService.js"
+export { BunCacheService } from "./services/CacheServiceBun.js"
 export { Clipboard, ClipboardError } from "./services/Clipboard.js"
 export {
 	CommandRunner,
@@ -89,6 +90,7 @@ export {
 	type CommandResult,
 	type RunOptions,
 } from "./services/CommandRunner.js"
+export { BunCommandRunner } from "./services/CommandRunnerBun.js"
 export {
 	GitHubService,
 	pullRequestFilesToPatch,

@@ -1,8 +1,4 @@
-import { mkdir } from "node:fs/promises"
-import { dirname } from "node:path"
-import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-bun"
 import { Context, Effect, Layer, Schema } from "effect"
-import * as Migrator from "effect/unstable/sql/Migrator"
 import * as SqlClient from "effect/unstable/sql/SqlClient"
 import type { SqlError } from "effect/unstable/sql/SqlError"
 import { checkConclusions, checkRollupStatuses, checkRunStatuses, pullRequestQueueModes, pullRequestStates, reviewStatuses, type PullRequestItem } from "../domain.js"
@@ -259,7 +255,7 @@ const dateFromCache = (operation: string, value: string) => {
 	return date ? Effect.succeed(date) : Effect.fail(new CacheError({ operation, cause: `Invalid cached date: ${value}` }))
 }
 
-const applyPragmas = Effect.gen(function* () {
+export const applyPragmas = Effect.gen(function* () {
 	const sql = yield* SqlClient.SqlClient
 	yield* sql`PRAGMA synchronous = NORMAL`
 	yield* sql`PRAGMA busy_timeout = 5000`
@@ -268,7 +264,7 @@ const applyPragmas = Effect.gen(function* () {
 	yield* sql`PRAGMA journal_size_limit = 16777216`
 })
 
-const cacheMigrations = {
+export const cacheMigrations = {
 	"001_initial_cache_schema": Effect.gen(function* () {
 		const sql = yield* SqlClient.SqlClient
 		yield* sql`CREATE TABLE IF NOT EXISTS pull_requests (
@@ -769,24 +765,4 @@ export class CacheService extends Context.Service<
 			return CacheService.of(liveCacheService(sql))
 		}),
 	)
-
-	static readonly layerSqliteFile = (filename: string): Layer.Layer<CacheService, SqlError | Migrator.MigrationError | CacheError> => {
-		const sqlLayer = SqliteClient.layer({ filename })
-		const setupLayer = Layer.effectDiscard(
-			Effect.gen(function* () {
-				yield* applyPragmas
-				yield* SqliteMigrator.run({ loader: Migrator.fromRecord(cacheMigrations), table: "ghui_cache_migrations" })
-			}),
-		)
-		const liveLayer = Layer.mergeAll(setupLayer, CacheService.layerSqlite).pipe(Layer.provide(sqlLayer))
-		return Layer.unwrap(
-			Effect.tryPromise({
-				try: () => mkdir(dirname(filename), { recursive: true }),
-				catch: (cause) => new CacheError({ operation: "createCacheDirectory", cause }),
-			}).pipe(Effect.as(liveLayer)),
-		)
-	}
-
-	static readonly layerFromPath = (filename: string | null): Layer.Layer<CacheService> =>
-		filename === null ? CacheService.disabledLayer : CacheService.layerSqliteFile(filename).pipe(Layer.catchCause(() => CacheService.disabledLayer))
 }

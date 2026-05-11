@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Effect } from "effect"
-import { CacheService } from "@ghui/core"
+import { BunCacheService, CacheService } from "@ghui/core"
 import { binaryPackageName as binaryPackageNameForTarget, currentReleaseTargetId, findReleaseTarget } from "./release-targets.js"
 
 type CommandResult = {
@@ -56,7 +56,7 @@ const assertCacheServiceOpens = async () => {
 			Effect.gen(function* () {
 				const cache = yield* CacheService
 				return yield* cache.readQueue("smoke", { _tag: "Queue", mode: "authored", repository: null })
-			}).pipe(Effect.provide(CacheService.layerSqliteFile(join(dir, "cache.sqlite")))),
+			}).pipe(Effect.provide(BunCacheService.layerSqliteFile(join(dir, "cache.sqlite")))),
 		)
 		assert(cached === null, "New cache database should start empty")
 	} finally {

@@ -8,7 +8,7 @@ import type { PullRequestItem } from "@ghui/core"
 import type { PullRequestLoad } from "@ghui/core"
 import type { PullRequestView } from "@ghui/core"
 import type { ReviewWorktree, ReviewSession, SessionMessage, ReviewReport, ReviewFinding } from "@ghui/core"
-import { CacheService, pullRequestCacheKey } from "@ghui/core"
+import { BunCacheService, CacheService, pullRequestCacheKey } from "@ghui/core"
 
 const tempDirs: string[] = []
 
@@ -62,7 +62,7 @@ const load = (data: readonly PullRequestItem[]): PullRequestLoad => ({
 	hasNextPage: true,
 })
 
-const runCache = async <A, E>(filename: string, effect: Effect.Effect<A, E, CacheService>) => Effect.runPromise(effect.pipe(Effect.provide(CacheService.layerSqliteFile(filename))))
+const runCache = async <A, E>(filename: string, effect: Effect.Effect<A, E, CacheService>) => Effect.runPromise(effect.pipe(Effect.provide(BunCacheService.layerSqliteFile(filename))))
 
 describe("CacheService", () => {
 	test("persists queue order and revives dates", async () => {
@@ -222,7 +222,7 @@ describe("CacheService", () => {
 			Effect.gen(function* () {
 				const cache = yield* CacheService
 				return yield* cache.readQueue("alice", view)
-			}).pipe(Effect.provide(CacheService.layerFromPath(join(blockedParent, "cache.sqlite")))),
+			}		).pipe(Effect.provide(BunCacheService.layerFromPath(join(blockedParent, "cache.sqlite")))),
 		)
 
 		expect(cached).toBeNull()

@@ -1,6 +1,7 @@
 import { Context, Effect, Layer } from "effect"
 import type { PullRequestItem } from "../domain.js"
 import { CommandRunner, type CommandError, type RateLimitError } from "./CommandRunner.js"
+import { BunCommandRunner } from "./CommandRunnerBun.js"
 
 // `open` ships on macOS; `xdg-open` is the Linux/BSD convention; `start` is the
 // Windows shell built-in and requires a dummy title argument before the URL.
@@ -35,5 +36,5 @@ export class BrowserOpener extends Context.Service<
 		}),
 	)
 
-	static readonly layer = BrowserOpener.layerNoDeps.pipe(Layer.provide(CommandRunner.layer))
+	static readonly layer = BrowserOpener.layerNoDeps.pipe(Layer.provide(BunCommandRunner.layer))
 }

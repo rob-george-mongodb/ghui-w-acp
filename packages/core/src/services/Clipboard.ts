@@ -1,5 +1,6 @@
 import { Context, Effect, Layer, Schema } from "effect"
 import { CommandRunner } from "./CommandRunner.js"
+import { BunCommandRunner } from "./CommandRunnerBun.js"
 
 export class ClipboardError extends Schema.TaggedErrorClass<ClipboardError>()("ClipboardError", {
 	detail: Schema.String,
@@ -43,5 +44,5 @@ export class Clipboard extends Context.Service<
 		}),
 	)
 
-	static readonly layer = Clipboard.layerNoDeps.pipe(Layer.provide(CommandRunner.layer))
+	static readonly layer = Clipboard.layerNoDeps.pipe(Layer.provide(BunCommandRunner.layer))
 }

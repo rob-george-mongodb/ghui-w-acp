@@ -21,6 +21,7 @@ import {
 import { inboxUpdatedSinceCutoff } from "../inbox.js"
 import { mergeActionCliArgs } from "../mergeActions.js"
 import { CommandError, CommandRunner, RateLimitError, type JsonParseError } from "./CommandRunner.js"
+import { BunCommandRunner } from "./CommandRunnerBun.js"
 
 const NullableString = Schema.NullOr(Schema.String)
 const OptionalNullableString = Schema.optionalKey(NullableString)
@@ -1100,5 +1101,5 @@ export class GitHubService extends Context.Service<
 		}),
 	)
 
-	static readonly layer = GitHubService.layerNoDeps.pipe(Layer.provide(CommandRunner.layer), Layer.provide(AppConfigLive))
+	static readonly layer = GitHubService.layerNoDeps.pipe(Layer.provide(BunCommandRunner.layer), Layer.provide(AppConfigLive))
 }

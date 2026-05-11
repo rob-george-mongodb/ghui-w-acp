@@ -39,6 +39,7 @@ The plan doc says `src/config.ts`, `src/domain.ts`, `src/services/CacheService.t
 - Error type: `CacheError` with `operation` and `cause` fields
 - Pattern: `toCacheError(operation, cause)` to normalize errors
 - `sql.withTransaction(write)` for multi-step writes
+- **Post-refactor**: Interface is `CacheService`, Bun impl is `BunCacheService` (split for Electron compatibility)
 
 ## Config Patterns (AppConfig)
 - Lives in `packages/core/src/config.ts`
@@ -167,3 +168,68 @@ type McpServerStdio = { name: string, command: string, args: string[], env: Arra
 - Lint: `bun run lint`
 - Format check: `bun run format:check`
 - Core package tests: `bun run --cwd packages/core test`
+
+---
+
+# Electron Implementation Notes
+
+## Key Observations
+
+### Bun → Node.js Gap
+1. **CommandRunner.ts** — `Bun.spawn` at L65, `Bun.readableStreamToText` at L45. Interface (Context.Service) and impl (layer) in same file.
+   - **Import risk**: The top-level `readStream` function at L43-46 references `Bun.readableStreamToText` — this WILL crash at import time in Node.js. Need to split interface from impl OR use bundler tricks.
+   - **Decision**: Split is cleaner. Create `CommandRunner.ts` (interface only) and `CommandRunnerBun.ts` (Bun impl) in core.
+2. **CacheService.ts** — imports `@effect/sql-sqlite-bun` at L3. Same issue — import-time crash in Node.js.
+   - Same approach: need to either split or have Electron provide its own CacheService.
+
+### Layer Composition
+- `makeCoreLayer()` in runtime.ts hardcodes Bun impls. Electron creates its own `makeElectronCoreLayer()`.
+- `GitHubService.layerNoDeps`, `Clipboard.layerNoDeps`, `BrowserOpener.layerNoDeps` all depend only on the CommandRunner *interface*, not Bun impl. These are reusable IF we can import them without pulling in Bun.
+
+### Workspace
+- Monorepo with `packages/*` workspaces. Adding `packages/electron/` fits naturally.
+- Root uses Bun as package manager.
+
+## Implementation Order (from plan)
+1. Scaffold Electron package
+2. Node.js CommandRunner  
+3. Node.js CacheService
+4. Electron core layer
+5. IPC bridge + protocol
+6. PR list pane
+7. PR detail pane
+8. Comments pane
+9. Merge controls
+10. Command palette
+11. Error handling
+12. Packaging
+
+## Phase 1 Tasks (Current)
+- [ ] Scaffold `packages/electron/` with electron-vite
+- [ ] Create NodeCommandRunner (child_process.spawn)
+- [ ] Create NodeCacheService (better-sqlite3)
+- [ ] Create makeElectronCoreLayer()
+- [ ] IPC protocol types
+- [ ] IPC main process handlers
+- [ ] Preload bridge
+
+## Critical Decision: Import-time Bun references
+The plan mentions option 1 (split interface from impl) or option 2 (bundler stubs). 
+Going with option 1 — split in core — because it's cleaner and the Electron bundler shouldn't need to know about Bun internals.
+
+Actually wait — the plan says "No core changes needed" for the layer composition. But the import-time issue IS a problem. Let me re-read...
+
+Plan says: "If this happens, we have two options: 1. Split CommandRunner into interface + impl files in @ghui/core (minor core change). 2. Use the Electron bundler (Vite) to externalize/stub the Bun implementation."
+
+The plan acknowledges this might be needed. Going with option 2 first (bundler externalization) since the plan prefers minimal core changes. If it's messy, fall back to option 1.
+
+Actually — for the Electron main process (Node.js, no bundler), we need to import CommandRunner service tag. The main process isn't bundled by Vite (only renderer is). So option 2 won't work for main process imports.
+
+**Decision: We need option 1 — split CommandRunner interface from Bun impl in core.**
+
+Same for CacheService — split the interface/types from the `@effect/sql-sqlite-bun` impl.
+
+This is a minor core change but necessary. Will flag to human if they object.
+
+## Status
+- Starting Phase 1: Scaffold + Node.js services
