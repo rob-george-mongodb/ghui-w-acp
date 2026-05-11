@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
-import { loadStoredSystemThemeAutoReload } from "@ghui/core"
+import { loadStoredSystemThemeAutoReload } from "@ghui/core/node"
 
 const originalConfigDir = process.env.GHUI_CONFIG_DIR
 const tempDirs: string[] = []

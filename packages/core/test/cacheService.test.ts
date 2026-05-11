@@ -8,7 +8,7 @@ import type { PullRequestItem } from "@ghui/core"
 import type { PullRequestLoad } from "@ghui/core"
 import type { PullRequestView } from "@ghui/core"
 import type { ReviewWorktree, ReviewSession, SessionMessage, ReviewReport, ReviewFinding } from "@ghui/core"
-import { BunCacheService, CacheService, pullRequestCacheKey } from "@ghui/core"
+import { BunCacheService, CacheService, pullRequestCacheKey } from "@ghui/core/node"
 
 const tempDirs: string[] = []
 

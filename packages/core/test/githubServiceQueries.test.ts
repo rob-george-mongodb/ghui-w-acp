@@ -13,7 +13,7 @@ import {
 	getCheckInfoFromContexts,
 	pullRequestPage,
 	STATUS_CHECKS_LIMIT,
-} from "@ghui/core"
+} from "@ghui/core/node"
 
 const testAppConfig = (overrides: Partial<{ prFetchLimit: number; prPageSize: number; prUpdatedSinceWindow: string }> = {}) =>
 	Layer.succeed(

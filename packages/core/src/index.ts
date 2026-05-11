@@ -5,7 +5,6 @@ export * from "./diff.js"
 export * from "./search.js"
 export * from "./appCommands.js"
 
-export * from "./config.js"
 export {
 	DiffCommentSide,
 	type LoadStatus,
@@ -74,11 +73,8 @@ export * from "./pullRequestCache.js"
 export * from "./pullRequestLoad.js"
 export * from "./pullRequestViews.js"
 export { appendPullRequestPage, PR_FETCH_RETRIES } from "./prQueries.js"
-export * from "./themeStore.js"
-
 export { BrowserOpener } from "./services/BrowserOpener.js"
 export { CacheService, CacheError, pullRequestCacheKey, type PullRequestCacheKey } from "./services/CacheService.js"
-export { BunCacheService } from "./services/CacheServiceBun.js"
 export { Clipboard, ClipboardError } from "./services/Clipboard.js"
 export {
 	CommandRunner,
@@ -91,18 +87,6 @@ export {
 	type RunOptions,
 } from "./services/CommandRunner.js"
 export { BunCommandRunner } from "./services/CommandRunnerBun.js"
-export {
-	GitHubService,
-	pullRequestFilesToPatch,
-	parsePullRequestSummary,
-	parsePullRequest,
-	getCheckInfoFromContexts,
-	pullRequestPage,
-	searchQuery,
-	STATUS_CHECKS_LIMIT,
-	type GitHubError,
-} from "./services/GitHubService.js"
-export { MockGitHubService, buildMockPullRequests, type MockOptions } from "./services/MockGitHubService.js"
 
 export {
 	type InboxSectionId,
@@ -114,8 +98,5 @@ export {
 	classifyInboxSection,
 } from "./inbox.js"
 
-export { ACPService, ACPError } from "./services/ACPService.js"
-export { ReviewWatcher } from "./services/ReviewWatcher.js"
-export { WorktreeService, WorktreeError } from "./services/WorktreeService.js"
 
-export { makeCoreLayer, type CoreLayerOptions } from "./runtime.js"
+

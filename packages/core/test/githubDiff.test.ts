@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { pullRequestFilesToPatch, splitPatchFiles } from "@ghui/core"
+import { pullRequestFilesToPatch, splitPatchFiles } from "@ghui/core/node"
 
 describe("pullRequestFilesToPatch", () => {
 	test("builds a parseable multi-file diff from paginated files API data", () => {

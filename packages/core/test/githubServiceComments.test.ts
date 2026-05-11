@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Effect, Layer, Schema } from "effect"
-import { CommandRunner, type CommandResult, AppConfigService } from "@ghui/core"
-import { GitHubService } from "@ghui/core"
+import { CommandRunner, type CommandResult, AppConfigService } from "@ghui/core/node"
+import { GitHubService } from "@ghui/core/node"
 
 const testAppConfig = Layer.succeed(
 	AppConfigService,

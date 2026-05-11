@@ -5,6 +5,7 @@ export * from "./search.js"
 export * from "./appCommands.js"
 
 export * from "./config.js"
+export * from "./themeStore.js"
 export {
 	DiffCommentSide,
 	type LoadStatus,
@@ -46,6 +47,23 @@ export {
 	type PullRequestReviewEvent,
 	isReviewComment,
 	isIssueComment,
+	findingSeverities,
+	type FindingSeverity,
+	findingStatuses,
+	type FindingStatus,
+	findingSources,
+	type FindingSource,
+	reviewVerdicts,
+	type ReviewVerdict,
+	reviewSessionTypes,
+	type ReviewSessionType,
+	sessionMessageRoles,
+	type SessionMessageRole,
+	type ReviewFinding,
+	type ReviewSession,
+	type SessionMessage,
+	type ReviewReport,
+	type ReviewWorktree,
 } from "./domain.js"
 export * from "./errors.js"
 export * from "./date.js"
@@ -59,6 +77,7 @@ export { appendPullRequestPage, PR_FETCH_RETRIES } from "./prQueries.js"
 
 export { BrowserOpener } from "./services/BrowserOpener.js"
 export { CacheService, CacheError, pullRequestCacheKey, type PullRequestCacheKey } from "./services/CacheService.js"
+export { BunCacheService } from "./services/CacheServiceBun.js"
 export { Clipboard, ClipboardError } from "./services/Clipboard.js"
 export {
 	CommandRunner,
@@ -70,6 +89,7 @@ export {
 	type CommandResult,
 	type RunOptions,
 } from "./services/CommandRunner.js"
+export { BunCommandRunner } from "./services/CommandRunnerBun.js"
 export {
 	GitHubService,
 	pullRequestFilesToPatch,
@@ -92,3 +112,9 @@ export {
 	inboxUpdatedSinceCutoff,
 	classifyInboxSection,
 } from "./inbox.js"
+
+export { makeCoreLayer, type CoreLayerOptions } from "./runtime.js"
+
+export { ACPService, ACPError } from "./services/ACPService.js"
+export { ReviewWatcher } from "./services/ReviewWatcher.js"
+export { WorktreeService, WorktreeError } from "./services/WorktreeService.js"
