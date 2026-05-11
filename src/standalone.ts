@@ -9,11 +9,12 @@ Usage:
   ghui -v, --version
                     Print the installed version
   ghui -h, --help   Show this help message
+  ghui mcp-server   Run as MCP server (used internally by AI review sessions)
 `
 
 const args = Bun.argv.slice(2)
 const command = args[0]
-const commands = ["help", "version"]
+const commands = ["help", "version", "mcp-server"]
 
 const editDistance = (a: string, b: string) => {
 	const distances = Array.from({ length: a.length + 1 }, (_, i) => [i])
@@ -41,6 +42,12 @@ if (command === "-v" || command === "--version" || command === "version") {
 if (command === "upgrade") {
 	console.error("Use your package manager to upgrade ghui, for example `brew upgrade ghui`.")
 	process.exit(1)
+}
+
+if (command === "mcp-server") {
+	const { runMcpServer } = await import("./mcp/server.js")
+	await runMcpServer()
+	process.exit(0)
 }
 
 if (typeof command === "string") {
