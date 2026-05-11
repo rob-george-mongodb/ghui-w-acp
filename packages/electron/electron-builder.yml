@@ -1,0 +1,30 @@
+appId: com.ghui.electron
+productName: ghui
+directories:
+  buildResources: build
+  output: dist-electron
+files:
+  - out/**/*
+  - "!node_modules/**/*"
+mac:
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+    - target: zip
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.developer-tools
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+dmg:
+  contents:
+    - x: 410
+      y: 150
+      type: link
+      path: /Applications
+    - x: 130
+      y: 150
+      type: file
