@@ -47,6 +47,23 @@ export {
 	type PullRequestReviewEvent,
 	isReviewComment,
 	isIssueComment,
+	findingSeverities,
+	type FindingSeverity,
+	findingStatuses,
+	type FindingStatus,
+	findingSources,
+	type FindingSource,
+	reviewVerdicts,
+	type ReviewVerdict,
+	reviewSessionTypes,
+	type ReviewSessionType,
+	sessionMessageRoles,
+	type SessionMessageRole,
+	type ReviewFinding,
+	type ReviewSession,
+	type SessionMessage,
+	type ReviewReport,
+	type ReviewWorktree,
 } from "./domain.js"
 export * from "./errors.js"
 export * from "./date.js"
