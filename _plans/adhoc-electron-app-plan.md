@@ -239,9 +239,10 @@ Local UI state (selected PR, pane visibility, command palette open) via React `u
 - **State management**: React Query for server state, React state for local UI state.
 
 ### Open Questions
-1. **Should we vendor `gh` CLI or require it pre-installed?** Recommendation: require pre-installed (same as TUI). Vendoring adds complexity and update burden.
-2. **Import-time Bun references**: Need to verify whether importing `CommandRunner` (service tag only) from `@ghui/core` triggers Bun globals at parse time in Node.js. If yes, a minor core refactor to split interface from impl is needed. Low risk — easy fix either way.
+1. **Should we vendor `gh` CLI or require it pre-installed?** Recommendation: require pre-installed (same as TUI). Vendoring adds complexity and update burden. Yes AI - assume it is pre-installed
+2. **Import-time Bun references**: Need to verify whether importing `CommandRunner` (service tag only) from `@ghui/core` triggers Bun globals at parse time in Node.js. If yes, a minor core refactor to split interface from impl is needed. Low risk — easy fix either way. Figure it out when implementing AI - I'm not sure.
 3. **Polling vs push for PR list refresh**: TUI polls on user action. Electron could do timed auto-refresh via React Query's `refetchInterval`. Recommend starting with refetch-on-window-focus (React Query default) and adding configurable interval later.
+AI - we want to have a refresh button. No polling or implict refresh.
 
 ## Relevant Files / Research References
 
