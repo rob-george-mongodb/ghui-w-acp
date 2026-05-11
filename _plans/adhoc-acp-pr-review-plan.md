@@ -86,9 +86,9 @@ A `.ghui-review/` subfolder within the worktree holds ghui-specific files:
 <worktreeRoot>/<owner>/<repo>/<pr-number>/          ← git worktree (full repo)
 ├── ... (all repo files at the PR branch HEAD) ...
 └── .ghui-review/
-    ├── findings.jsonl        ← appended by MCP server; read by ghui watcher
-    ├── report.json           ← written by submit_pr_report tool (last call wins per session)
-    └── human-comments.jsonl  ← written by ghui for human draft comments
+    ├── findings.jsonl            ← appended by MCP server; read by ghui watcher
+    ├── report-<sessionId>.md     ← copied from agent's written file by submit_pr_report
+    └── human-comments.jsonl      ← written by ghui for human draft comments
 ```
 
 The agent is told about `.ghui-review/findings.jsonl` in the initial prompt so it can check previously reported findings and avoid duplicates.
@@ -158,13 +158,13 @@ On each call: generates a UUID, appends a JSON line to `$GHUI_REVIEW_DIR/finding
 ```typescript
 {
   name: "submit_pr_report",
-  description: "Submit a full PR review report with an overall verdict.",
+  description: "Submit a full PR review report with an overall verdict. Write your report to a Markdown file first, then call this tool with the file path.",
   inputSchema: {
     type: "object",
     properties: {
-      report: {
+      report_path: {
         type: "string",
-        description: "Full review report in Markdown. Should summarise the PR's purpose, key findings, and reasoning for the verdict.",
+        description: "Path to the Markdown report file you have written, relative to your working directory.",
       },
       verdict: {
         type: "string",
@@ -172,12 +172,19 @@ On each call: generates a UUID, appends a JSON line to `$GHUI_REVIEW_DIR/finding
         description: "Overall assessment of the PR.",
       },
     },
-    required: ["report", "verdict"],
+    required: ["report_path", "verdict"],
   },
 }
 ```
 
-On call: writes `$GHUI_REVIEW_DIR/report.json` (containing `{ verdict, report, sessionId, submittedAt }`) to disk, upserts a row in `review_reports` SQLite table. Returns `{ status: "submitted" }`. Multiple calls overwrite the previous report for this session.
+On call:
+1. Resolves `report_path` relative to the MCP server's CWD (= the worktree, because opencode passes its `--cwd` to spawned MCP processes via `StdioClientTransport`).
+2. Reads the Markdown content from that file.
+3. Copies/renames the file to `$GHUI_REVIEW_DIR/report-<sessionId>.md` (canonical location).
+4. Upserts a row in `review_reports` SQLite table with the content and verdict.
+5. Returns `{ status: "submitted", canonical_path: ".ghui-review/report-<sessionId>.md" }`.
+
+Multiple calls overwrite the previous report for this session. Returns an MCP error if `report_path` does not exist or is unreadable.
 
 If `JSON.parse` fails on any line read by the watcher, that line is skipped and retried — never crash, never stop watching.
 
@@ -237,7 +244,7 @@ New migration in `CacheService` migrations record:
 ```sql
 -- Migration: 002_acp_review
 
--- Tracks git worktrees created for PR reviews
+-- Tracks git worktrees created for PR reviews.
 CREATE TABLE IF NOT EXISTS review_worktrees (
   pr_key        TEXT NOT NULL PRIMARY KEY,   -- "<owner>/<repo>#<number>"
   worktree_path TEXT NOT NULL,
@@ -246,11 +253,13 @@ CREATE TABLE IF NOT EXISTS review_worktrees (
 );
 
 -- Tracks every ACP session created for a PR review (review or chat).
--- Multiple sessions per PR are tracked here; MVP enforces one active at a time
--- but the history is always kept. Stretch goal: allow multiple concurrent sessions.
+-- worktree_path ties a session to the worktree it ran in.
+-- Uniqueness enforced: one active session per (session_type, worktree_path) at a time.
+-- History is preserved; only ended_at IS NULL rows are "active".
 CREATE TABLE IF NOT EXISTS review_sessions (
-  session_id    TEXT NOT NULL PRIMARY KEY,   -- ACP-assigned session ID from newSession response
+  session_id    TEXT NOT NULL PRIMARY KEY,   -- ACP-assigned ID from newSession response
   pr_key        TEXT NOT NULL,
+  worktree_path TEXT NOT NULL,               -- FK → review_worktrees.worktree_path
   session_type  TEXT NOT NULL CHECK (session_type IN ('review', 'chat')),
   agent_name    TEXT NOT NULL,               -- from config acp.agents[n].name
   started_at    TEXT NOT NULL,
@@ -261,27 +270,46 @@ CREATE TABLE IF NOT EXISTS review_sessions (
 CREATE INDEX IF NOT EXISTS idx_review_sessions_pr_key
   ON review_sessions (pr_key);
 
--- Stores full-report submissions from submit_pr_report tool.
+-- Enforces at most one active session of each type per worktree.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_review_sessions_active_type
+  ON review_sessions (session_type, worktree_path)
+  WHERE ended_at IS NULL;
+
+-- Conversation transcript for each session.
+-- User messages written by ghui at prompt time.
+-- Agent messages accumulated from sessionUpdate agent_message_chunk events (one row per turn).
+CREATE TABLE IF NOT EXISTS session_messages (
+  id          TEXT NOT NULL PRIMARY KEY,
+  session_id  TEXT NOT NULL,
+  role        TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content     TEXT NOT NULL,
+  created_at  TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_session_messages_session_id
+  ON session_messages (session_id);
+
+-- Stores the full PR review report submitted via submit_pr_report tool.
 -- One row per session (last call wins within a session).
--- Not yet surfaced in the app UI but stored for future use.
 CREATE TABLE IF NOT EXISTS review_reports (
-  session_id    TEXT NOT NULL PRIMARY KEY,
-  pr_key        TEXT NOT NULL,
-  verdict       TEXT NOT NULL CHECK (verdict IN (
-                  'indeterminate_human_review_required',
-                  'good_for_merge',
-                  'block_merge',
-                  'minor_issues'
-                )),
-  report_md     TEXT NOT NULL,               -- full Markdown report
-  submitted_at  TEXT NOT NULL
+  session_id      TEXT NOT NULL PRIMARY KEY,
+  pr_key          TEXT NOT NULL,
+  verdict         TEXT NOT NULL CHECK (verdict IN (
+                    'indeterminate_human_review_required',
+                    'good_for_merge',
+                    'block_merge',
+                    'minor_issues'
+                  )),
+  report_md       TEXT NOT NULL,             -- full Markdown report content
+  canonical_path  TEXT NOT NULL,             -- path to .ghui-review/report-<sessionId>.md
+  submitted_at    TEXT NOT NULL
 );
 
 -- Tracks all local draft comments: AI findings and human-authored drafts.
 -- Neither source goes to GitHub without an explicit user action.
 CREATE TABLE IF NOT EXISTS review_findings (
   id            TEXT NOT NULL PRIMARY KEY,
-  pr_key        TEXT NOT NULL,     -- "<owner>/<repo>#<number>"
+  pr_key        TEXT NOT NULL,
   session_id    TEXT,              -- FK → review_sessions.session_id; NULL for human-authored
   head_ref_oid  TEXT NOT NULL,     -- PR commit SHA at review time; used as commitId when posting
   source        TEXT NOT NULL CHECK (source IN ('ai', 'human')),
@@ -294,8 +322,8 @@ CREATE TABLE IF NOT EXISTS review_findings (
   severity      TEXT CHECK (severity IN ('info', 'warning', 'error', 'blocking')),
   status        TEXT NOT NULL DEFAULT 'pending_review'
                 CHECK (status IN ('pending_review', 'accepted', 'rejected', 'modified')),
-  modified_body TEXT,              -- user-edited body; overrides body when posting
-  posted_url    TEXT,              -- GitHub URL after posting; NULL = not yet posted
+  modified_body TEXT,
+  posted_url    TEXT,
   created_at    TEXT NOT NULL,
   updated_at    TEXT NOT NULL
 );
@@ -304,11 +332,11 @@ CREATE INDEX IF NOT EXISTS idx_review_findings_pr_key
   ON review_findings (pr_key);
 ```
 
-**`session_id` in `review_findings`**: references the `review_sessions` table. Every AI finding is tagged with the session that produced it, enabling attribution across multiple sessions on the same PR.
-
-**`head_ref_oid`**: Captures the commit SHA at review time. Used as `commitId` in `createPullRequestComment`. If the PR has new commits since the review, `PostFindingsModal` shows a staleness warning.
-
-**`diff_side`**: Required by `CreatePullRequestCommentInput`. Defaults to `"RIGHT"` (new-file side, correct for additions/changes) if the agent omits it.
+**Key schema decisions:**
+- `review_sessions.worktree_path` links sessions to the worktree they ran in, allowing worktree context when browsing history.
+- The partial unique index `idx_review_sessions_active_type` enforces at most one active review session and one active chat session per worktree, while preserving all historical rows.
+- `session_messages` stores the full conversation transcript per session. User messages are inserted at prompt time; agent messages are accumulated from `agent_message_chunk` events (one row per completed turn).
+- `review_reports.canonical_path` records where the Markdown file was canonicalized so the viewer can open it directly.
 
 New `CacheService` methods:
 
@@ -322,6 +350,10 @@ readonly deleteWorktree:   (prKey: string) => Effect<void, never>
 readonly upsertSession:    (session: ReviewSession) => Effect<void, never>
 readonly endSession:       (sessionId: string, endedAt: Date, stopReason?: string) => Effect<void, never>
 readonly listSessions:     (prKey: string) => Effect<readonly ReviewSession[], CacheError>
+
+// Messages
+readonly appendMessage:    (msg: SessionMessage) => Effect<void, never>
+readonly listMessages:     (sessionId: string) => Effect<readonly SessionMessage[], CacheError>
 
 // Reports
 readonly upsertReport:     (report: ReviewReport) => Effect<void, never>
@@ -359,10 +391,13 @@ export type ReviewVerdict = (typeof reviewVerdicts)[number]
 export const reviewSessionTypes = ["review", "chat"] as const
 export type ReviewSessionType = (typeof reviewSessionTypes)[number]
 
+export const sessionMessageRoles = ["user", "assistant"] as const
+export type SessionMessageRole = (typeof sessionMessageRoles)[number]
+
 export interface ReviewFinding {
   readonly id: string
   readonly prKey: string
-  readonly sessionId: string | null  // null for human-authored
+  readonly sessionId: string | null
   readonly headRefOid: string
   readonly source: FindingSource
   readonly filePath: string | null
@@ -380,8 +415,9 @@ export interface ReviewFinding {
 }
 
 export interface ReviewSession {
-  readonly sessionId: string   // ACP-assigned ID from newSession response
+  readonly sessionId: string
   readonly prKey: string
+  readonly worktreePath: string
   readonly sessionType: ReviewSessionType
   readonly agentName: string
   readonly startedAt: Date
@@ -389,11 +425,20 @@ export interface ReviewSession {
   readonly stopReason: string | null
 }
 
+export interface SessionMessage {
+  readonly id: string
+  readonly sessionId: string
+  readonly role: SessionMessageRole
+  readonly content: string
+  readonly createdAt: Date
+}
+
 export interface ReviewReport {
   readonly sessionId: string
   readonly prKey: string
   readonly verdict: ReviewVerdict
   readonly reportMd: string
+  readonly canonicalPath: string
   readonly submittedAt: Date
 }
 
@@ -417,10 +462,10 @@ Wraps `@agentclientprotocol/sdk`'s `ClientSideConnection`. Responsibilities:
 - Implement the `Client` interface:
   - `sessionUpdate`: push to an Effect Queue; TUI atoms subscribe to this.
   - `requestPermission`: auto-allow file reads; surface all other requests to the user via `PermissionRequestModal`.
-- **Session ID tracking**: when `newSession` responds, the ACP-assigned `sessionId` is immediately persisted via `CacheService.upsertSession`. This ID is then included in the `GHUI_SESSION_ID` env var passed to the MCP server, so findings and reports carry the correct session attribution. `endSession` is called (with `stopReason`) when `prompt` returns.
+- **Session ID tracking**: when `newSession` responds, the ACP-assigned `sessionId` is immediately persisted via `CacheService.upsertSession` (including `worktreePath`). This ID is passed as `GHUI_SESSION_ID` to the MCP server env. `endSession` is called (with `stopReason`) when `prompt` returns.
+- **Message persistence**: before each `sendPrompt` call, the user's message is written to `session_messages` (role: `"user"`). `agent_message_chunk` events are accumulated in memory per turn; when the turn completes (PromptResponse received), the full agent text is written as a single `session_messages` row (role: `"assistant"`).
 - **Process lifecycle**: track spawned child processes. On ghui exit (SIGTERM, SIGINT, `process.on('exit')`), SIGTERM all tracked children. `closeSession` kills only that session's process.
-- **One active session per PR** in MVP (review or chat). `startReviewSession` / `startChatSession` return an error if an active (not yet ended) session already exists for that PR key.
-- **Stretch goal — multiple sessions per PR**: the `review_sessions` table already supports N sessions per PR. Future work can relax the "one active" constraint to allow, e.g., a review session and a chat session to run concurrently, or multiple review sessions with different agents.
+- **One active session per (session_type, worktree_path)** in MVP, enforced by the partial unique index in SQLite. `startReviewSession` / `startChatSession` check for an existing active session of the same type on the same worktree and return an error if one exists. Note: a review session and a chat session can coexist on the same worktree simultaneously (different `session_type`). Stretch goal: multiple concurrent review sessions with different agents would require relaxing the index.
 
 Expose Effect-friendly API:
 
@@ -541,6 +586,17 @@ All new UI follows existing Ink + `jotai-effect` atom patterns from `src/App.tsx
 - `session/cancel` sent if user cancels within the panel.
 - Any `report_finding` calls during Q&A appear in `FindingsPanel` identically to review-session findings.
 
+#### `SessionViewerPanel`
+
+- Triggered from the PR detail view (key binding chosen during implementation).
+- Lists all sessions for the current PR (grouped by type, most recent first), showing: agent name, start time, status (active/ended), verdict if a report was submitted.
+- User selects a session → expands to show:
+  - Session metadata row.
+  - Full conversation transcript (`session_messages` in chronological order, user/assistant alternating).
+  - List of findings generated in this session (read-only; acceptance/rejection is done in `FindingsPanel`).
+  - If a report exists for this session: verdict badge + link to open the Markdown file.
+- Read-only panel; no mutations from here.
+
 #### `PostFindingsModal`
 
 - Lists all `accepted`/`modified` findings not yet posted.
@@ -564,16 +620,17 @@ All new UI follows existing Ink + `jotai-effect` atom patterns from `src/App.tsx
 
 - `src/mcp/server.ts`:
   - `report_finding`: spawn in both dev and standalone modes, send valid `tools/call`, assert `findings.jsonl` appended with correct JSON and UUID. Test invalid input → MCP error. Both modes produce identical output.
-  - `submit_pr_report`: send valid call, assert `report.json` written with `{ verdict, report, sessionId, submittedAt }`. Assert SQLite `review_reports` row upserted. Second call overwrites previous.
-  - `GHUI_SESSION_ID` env var is present in the written `report.json`.
+  - `submit_pr_report`: agent writes a temp Markdown file; send `tools/call` with that path and a verdict; assert the file is copied to `$GHUI_REVIEW_DIR/report-<sessionId>.md`; assert `review_reports` SQLite row upserted with correct content. Second call overwrites the copied file and SQLite row. Missing `report_path` → MCP error.
+  - `GHUI_SESSION_ID` env var propagated correctly into the written report.
 - **Partial-line safety**: write a file with a partial last line, run a poll cycle, assert skip; complete the line, assert processed on next cycle.
-- `CacheService` migration `002_acp_review`: all four tables and indexes exist; round-trip all new methods (`upsertWorktree`, `upsertSession`, `endSession`, `listSessions`, `upsertReport`, `getReport`, `upsertFinding`, `listFindings`, `updateFindingStatus`, `markFindingPosted`).
+- `CacheService` migration `002_acp_review`: all tables and indexes exist; round-trip all new methods (`upsertWorktree`, `upsertSession` with `worktreePath`, `endSession`, `listSessions`, `appendMessage`, `listMessages`, `upsertReport`, `getReport`, `upsertFinding`, `listFindings`, `updateFindingStatus`, `markFindingPosted`).
+- **Uniqueness constraint**: `upsertSession` for a second active session of the same type on the same worktree fails (before `endSession` is called); succeeds after `endSession` marks the first session ended.
 - **`ReviewFinding` → GitHub posting mapping**: line-anchored → correct `createPullRequestComment` args. PR-level → `createPullRequestIssueComment`. `modifiedBody` over `body`. Staleness warning when finding `headRefOid ≠ current PR headRefOid`.
-- `ACPService` (in-memory transport): `startReviewSession` persists a `ReviewSession` row with the ACP-assigned `sessionId`. `endSession` is called on `prompt` return. Second `startReviewSession` for same PR key while first is active returns error. Process cleanup on `closeSession`.
+- `ACPService` (in-memory transport): `startReviewSession` persists a `ReviewSession` with `worktreePath`. User message written before `sendPrompt`. Agent message accumulated and persisted after `prompt` returns. `endSession` called on return. Second `startReviewSession` on same worktree returns error; second `startChatSession` on same worktree succeeds (different type). Process cleanup on `closeSession`.
 
 ### Integration tests
 
-- End-to-end review session: real `ghui mcp-server`, fake ACP agent that calls `report_finding` once and `submit_pr_report` once then completes. Assert finding in SQLite + `findings.jsonl`; assert report in SQLite + `report.json`.
+- End-to-end review session: real `ghui mcp-server`, fake ACP agent that calls `report_finding` once and `submit_pr_report` once then completes. Assert finding in SQLite + `findings.jsonl`; assert report in SQLite + canonical `.ghui-review/report-<sessionId>.md`.
 - Human comment round-trip: `source = "human"` in SQLite, appended to `human-comments.jsonl`.
 - Status transitions: accept → post cycle (mock `GitHubService`), assert `posted_url` set.
 - Orphan process: SIGTERM ghui, assert `opencode acp` child terminates.
