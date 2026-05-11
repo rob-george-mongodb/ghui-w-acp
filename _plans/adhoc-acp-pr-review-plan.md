@@ -1,6 +1,6 @@
 # ACP PR Review Integration Plan
 
-**Status**: Draft — revised per human feedback  
+**Status**: Draft — ready for human signoff  
 **Branch**: `adhoc-plan/acp-pr-review-1`  
 **Research files**: `_findings/codebase-research-*.md`
 
@@ -87,6 +87,7 @@ A `.ghui-review/` subfolder within the worktree holds ghui-specific files:
 ├── ... (all repo files at the PR branch HEAD) ...
 └── .ghui-review/
     ├── findings.jsonl        ← appended by MCP server; read by ghui watcher
+    ├── report.json           ← written by submit_pr_report tool (last call wins per session)
     └── human-comments.jsonl  ← written by ghui for human draft comments
 ```
 
@@ -125,7 +126,9 @@ Add `"mcp-server"` to the recognised commands list and dispatch to `src/mcp/serv
 
 **File**: `src/mcp/server.ts` (new)
 
-A minimal MCP server using `@modelcontextprotocol/sdk/server/` over stdio. Registers one tool:
+A minimal MCP server using `@modelcontextprotocol/sdk/server/` over stdio. Registers **two tools**:
+
+**Tool 1: `report_finding`**
 
 ```typescript
 {
@@ -148,14 +151,37 @@ A minimal MCP server using `@modelcontextprotocol/sdk/server/` over stdio. Regis
 }
 ```
 
-On each call, the server:
-1. Generates a UUID for the finding.
-2. Appends a JSON line to `$GHUI_REVIEW_DIR/findings.jsonl` using a single `write` syscall (JSON + newline together) to avoid partial-line reads.
-3. Returns `{ id, status: "recorded" }`.
+On each call: generates a UUID, appends a JSON line to `$GHUI_REVIEW_DIR/findings.jsonl` (single `write` syscall), returns `{ id, status: "recorded" }`.
 
-If `JSON.parse` fails on a line read by the watcher, that line is skipped and retried on the next poll — never crash, never stop watching.
+**Tool 2: `submit_pr_report`**
 
-Environment variables consumed: `GHUI_REVIEW_DIR`, `GHUI_PR_KEY`.
+```typescript
+{
+  name: "submit_pr_report",
+  description: "Submit a full PR review report with an overall verdict.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      report: {
+        type: "string",
+        description: "Full review report in Markdown. Should summarise the PR's purpose, key findings, and reasoning for the verdict.",
+      },
+      verdict: {
+        type: "string",
+        enum: ["indeterminate_human_review_required", "good_for_merge", "block_merge", "minor_issues"],
+        description: "Overall assessment of the PR.",
+      },
+    },
+    required: ["report", "verdict"],
+  },
+}
+```
+
+On call: writes `$GHUI_REVIEW_DIR/report.json` (containing `{ verdict, report, sessionId, submittedAt }`) to disk, upserts a row in `review_reports` SQLite table. Returns `{ status: "submitted" }`. Multiple calls overwrite the previous report for this session.
+
+If `JSON.parse` fails on any line read by the watcher, that line is skipped and retried — never crash, never stop watching.
+
+Environment variables consumed: `GHUI_REVIEW_DIR`, `GHUI_PR_KEY`, `GHUI_SESSION_ID`.
 
 ### 2. Config extension
 
@@ -219,14 +245,46 @@ CREATE TABLE IF NOT EXISTS review_worktrees (
   created_at    TEXT NOT NULL
 );
 
+-- Tracks every ACP session created for a PR review (review or chat).
+-- Multiple sessions per PR are tracked here; MVP enforces one active at a time
+-- but the history is always kept. Stretch goal: allow multiple concurrent sessions.
+CREATE TABLE IF NOT EXISTS review_sessions (
+  session_id    TEXT NOT NULL PRIMARY KEY,   -- ACP-assigned session ID from newSession response
+  pr_key        TEXT NOT NULL,
+  session_type  TEXT NOT NULL CHECK (session_type IN ('review', 'chat')),
+  agent_name    TEXT NOT NULL,               -- from config acp.agents[n].name
+  started_at    TEXT NOT NULL,
+  ended_at      TEXT,                        -- NULL while session is active
+  stop_reason   TEXT                         -- from PromptResponse.stopReason
+);
+
+CREATE INDEX IF NOT EXISTS idx_review_sessions_pr_key
+  ON review_sessions (pr_key);
+
+-- Stores full-report submissions from submit_pr_report tool.
+-- One row per session (last call wins within a session).
+-- Not yet surfaced in the app UI but stored for future use.
+CREATE TABLE IF NOT EXISTS review_reports (
+  session_id    TEXT NOT NULL PRIMARY KEY,
+  pr_key        TEXT NOT NULL,
+  verdict       TEXT NOT NULL CHECK (verdict IN (
+                  'indeterminate_human_review_required',
+                  'good_for_merge',
+                  'block_merge',
+                  'minor_issues'
+                )),
+  report_md     TEXT NOT NULL,               -- full Markdown report
+  submitted_at  TEXT NOT NULL
+);
+
 -- Tracks all local draft comments: AI findings and human-authored drafts.
 -- Neither source goes to GitHub without an explicit user action.
 CREATE TABLE IF NOT EXISTS review_findings (
   id            TEXT NOT NULL PRIMARY KEY,
   pr_key        TEXT NOT NULL,     -- "<owner>/<repo>#<number>"
+  session_id    TEXT,              -- FK → review_sessions.session_id; NULL for human-authored
   head_ref_oid  TEXT NOT NULL,     -- PR commit SHA at review time; used as commitId when posting
   source        TEXT NOT NULL CHECK (source IN ('ai', 'human')),
-  session_id    TEXT,              -- ACP session ID; NULL for human-authored comments
   file_path     TEXT,              -- NULL = PR-level comment (→ issue comment when posted)
   line_start    INTEGER,
   line_end      INTEGER,
@@ -246,6 +304,8 @@ CREATE INDEX IF NOT EXISTS idx_review_findings_pr_key
   ON review_findings (pr_key);
 ```
 
+**`session_id` in `review_findings`**: references the `review_sessions` table. Every AI finding is tagged with the session that produced it, enabling attribution across multiple sessions on the same PR.
+
 **`head_ref_oid`**: Captures the commit SHA at review time. Used as `commitId` in `createPullRequestComment`. If the PR has new commits since the review, `PostFindingsModal` shows a staleness warning.
 
 **`diff_side`**: Required by `CreatePullRequestCommentInput`. Defaults to `"RIGHT"` (new-file side, correct for additions/changes) if the agent omits it.
@@ -253,13 +313,25 @@ CREATE INDEX IF NOT EXISTS idx_review_findings_pr_key
 New `CacheService` methods:
 
 ```typescript
-readonly upsertFinding: (finding: ReviewFinding) => Effect<void, never>
-readonly listFindings: (prKey: string) => Effect<readonly ReviewFinding[], CacheError>
-readonly updateFindingStatus: (id: string, status: FindingStatus, modifiedBody?: string) => Effect<void, never>
-readonly markFindingPosted: (id: string, url: string) => Effect<void, never>
-readonly upsertWorktree: (entry: ReviewWorktree) => Effect<void, never>
-readonly listWorktrees: () => Effect<readonly ReviewWorktree[], CacheError>
-readonly deleteWorktree: (prKey: string) => Effect<void, never>
+// Worktrees
+readonly upsertWorktree:   (entry: ReviewWorktree) => Effect<void, never>
+readonly listWorktrees:    () => Effect<readonly ReviewWorktree[], CacheError>
+readonly deleteWorktree:   (prKey: string) => Effect<void, never>
+
+// Sessions
+readonly upsertSession:    (session: ReviewSession) => Effect<void, never>
+readonly endSession:       (sessionId: string, endedAt: Date, stopReason?: string) => Effect<void, never>
+readonly listSessions:     (prKey: string) => Effect<readonly ReviewSession[], CacheError>
+
+// Reports
+readonly upsertReport:     (report: ReviewReport) => Effect<void, never>
+readonly getReport:        (sessionId: string) => Effect<ReviewReport | null, CacheError>
+
+// Findings
+readonly upsertFinding:        (finding: ReviewFinding) => Effect<void, never>
+readonly listFindings:         (prKey: string) => Effect<readonly ReviewFinding[], CacheError>
+readonly updateFindingStatus:  (id: string, status: FindingStatus, modifiedBody?: string) => Effect<void, never>
+readonly markFindingPosted:    (id: string, url: string) => Effect<void, never>
 ```
 
 ### 5. Domain types addition
@@ -276,16 +348,27 @@ export type FindingStatus = (typeof findingStatuses)[number]
 export const findingSources = ["ai", "human"] as const
 export type FindingSource = (typeof findingSources)[number]
 
+export const reviewVerdicts = [
+  "indeterminate_human_review_required",
+  "good_for_merge",
+  "block_merge",
+  "minor_issues",
+] as const
+export type ReviewVerdict = (typeof reviewVerdicts)[number]
+
+export const reviewSessionTypes = ["review", "chat"] as const
+export type ReviewSessionType = (typeof reviewSessionTypes)[number]
+
 export interface ReviewFinding {
   readonly id: string
   readonly prKey: string
-  readonly headRefOid: string        // commit SHA at review time
+  readonly sessionId: string | null  // null for human-authored
+  readonly headRefOid: string
   readonly source: FindingSource
-  readonly sessionId: string | null
-  readonly filePath: string | null   // null = PR-level comment
+  readonly filePath: string | null
   readonly lineStart: number | null
   readonly lineEnd: number | null
-  readonly diffSide: DiffCommentSide | null  // null for PR-level
+  readonly diffSide: DiffCommentSide | null
   readonly title: string | null
   readonly body: string
   readonly severity: FindingSeverity | null
@@ -294,6 +377,24 @@ export interface ReviewFinding {
   readonly postedUrl: string | null
   readonly createdAt: Date
   readonly updatedAt: Date
+}
+
+export interface ReviewSession {
+  readonly sessionId: string   // ACP-assigned ID from newSession response
+  readonly prKey: string
+  readonly sessionType: ReviewSessionType
+  readonly agentName: string
+  readonly startedAt: Date
+  readonly endedAt: Date | null
+  readonly stopReason: string | null
+}
+
+export interface ReviewReport {
+  readonly sessionId: string
+  readonly prKey: string
+  readonly verdict: ReviewVerdict
+  readonly reportMd: string
+  readonly submittedAt: Date
 }
 
 export interface ReviewWorktree {
@@ -310,24 +411,28 @@ export interface ReviewWorktree {
 
 Wraps `@agentclientprotocol/sdk`'s `ClientSideConnection`. Responsibilities:
 
-- **Spawn** `opencode acp --cwd <worktreePath>` as a child process. The worktree path is always created by `WorktreeService` before the ACP session starts.
-- **Future**: support attaching to an already-running `opencode acp` process (e.g., if opencode gains a socket transport or the user has a process with a known handle). MVP always spawns fresh.
+- **Spawn** `opencode acp --cwd <worktreePath>` as a child process. The worktree is always created by `WorktreeService` before the ACP session starts.
+- **Future**: support attaching to an already-running `opencode acp` process (e.g., if opencode gains a socket transport). MVP always spawns fresh.
 - Construct ndjson stream from the process's stdin/stdout.
 - Implement the `Client` interface:
   - `sessionUpdate`: push to an Effect Queue; TUI atoms subscribe to this.
-  - `requestPermission`: auto-allow file reads; surface all other permission requests to the user via a `PermissionRequestModal` (simple allow/reject). Log all decisions.
-- **Process lifecycle**: track spawned child processes. On ghui exit (SIGTERM, SIGINT, `process.on('exit')`), SIGTERM all tracked child processes. `closeSession` kills only that session's process.
-- At most **one ACP session per PR key** at a time. Returns an error if a session already exists.
+  - `requestPermission`: auto-allow file reads; surface all other requests to the user via `PermissionRequestModal`.
+- **Session ID tracking**: when `newSession` responds, the ACP-assigned `sessionId` is immediately persisted via `CacheService.upsertSession`. This ID is then included in the `GHUI_SESSION_ID` env var passed to the MCP server, so findings and reports carry the correct session attribution. `endSession` is called (with `stopReason`) when `prompt` returns.
+- **Process lifecycle**: track spawned child processes. On ghui exit (SIGTERM, SIGINT, `process.on('exit')`), SIGTERM all tracked children. `closeSession` kills only that session's process.
+- **One active session per PR** in MVP (review or chat). `startReviewSession` / `startChatSession` return an error if an active (not yet ended) session already exists for that PR key.
+- **Stretch goal — multiple sessions per PR**: the `review_sessions` table already supports N sessions per PR. Future work can relax the "one active" constraint to allow, e.g., a review session and a chat session to run concurrently, or multiple review sessions with different agents.
 
 Expose Effect-friendly API:
 
 ```typescript
-readonly startReviewSession: (pr: PullRequestItem, worktreePath: string) => Effect<SessionId, ACPError>
-readonly startChatSession:   (pr: PullRequestItem, worktreePath: string) => Effect<SessionId, ACPError>
-readonly sendPrompt:         (sessionId: SessionId, text: string) => Effect<PromptResponse, ACPError>
-readonly cancelSession:      (sessionId: SessionId) => Effect<void, never>
-readonly closeSession:       (sessionId: SessionId) => Effect<void, never>
+readonly startReviewSession: (pr: PullRequestItem, worktreePath: string) => Effect<ReviewSession, ACPError>
+readonly startChatSession:   (pr: PullRequestItem, worktreePath: string) => Effect<ReviewSession, ACPError>
+readonly sendPrompt:         (sessionId: string, text: string) => Effect<PromptResponse, ACPError>
+readonly cancelSession:      (sessionId: string) => Effect<void, never>
+readonly closeSession:       (sessionId: string) => Effect<void, never>
 ```
+
+The return type is `ReviewSession` (not just `SessionId`), containing the ACP-assigned `sessionId` alongside the ghui metadata, so callers always have the full record.
 
 The MCP server registration passed in `newSession`:
 
@@ -337,11 +442,14 @@ mcpServers: [{
   command: process.execPath,
   args: ["mcp-server"],
   env: [
-    { name: "GHUI_REVIEW_DIR", value: `${worktreePath}/.ghui-review` },
-    { name: "GHUI_PR_KEY",     value: prKey },
+    { name: "GHUI_REVIEW_DIR",  value: `${worktreePath}/.ghui-review` },
+    { name: "GHUI_PR_KEY",      value: prKey },
+    { name: "GHUI_SESSION_ID",  value: acp_session_id },  // filled after newSession responds
   ],
 }]
 ```
+
+> **Note**: `GHUI_SESSION_ID` is only known after `newSession` returns. The MCP server subprocess is spawned by opencode after `newSession` completes, so the env var is available in time. The env array passed to `newSession` is constructed with the session ID immediately upon receiving the `NewSessionResponse`.
 
 **Initial review prompt template** (sent as the first `session/prompt`):
 
@@ -362,9 +470,13 @@ Description:
 The full repository at the PR branch HEAD is your working directory.
 Previously reported findings are at: .ghui-review/findings.jsonl
 
-Review the pull request. For any significant findings that warrant a PR comment,
+Review the pull request. For each significant finding that warrants a PR comment,
 call `report_finding`. Focus on correctness, security, performance, and API design.
 Omit trivial style issues unless they violate explicit project conventions.
+
+When your review is complete, call `submit_pr_report` with a full Markdown summary
+and one of the verdict values: indeterminate_human_review_required | good_for_merge |
+block_merge | minor_issues.
 ```
 
 ### 7. File watcher
@@ -450,23 +562,22 @@ All new UI follows existing Ink + `jotai-effect` atom patterns from `src/App.tsx
 
 ### Unit tests
 
-- `src/mcp/server.ts`: spawn in both dev mode and standalone binary mode, send a valid `tools/call` for `report_finding`, assert `findings.jsonl` is appended correctly. Test invalid input → MCP error. Test that both invocation modes produce identical output.
-- **Partial-line safety**: write a file with a partial last line (no trailing newline), run a poll cycle, assert the partial line is skipped; complete the line and newline, assert the completed line is processed on the next cycle.
-- `CacheService` migration `002_acp_review`: verify both tables and the index exist; round-trip `upsertFinding` / `listFindings` / `updateFindingStatus` / `markFindingPosted`; round-trip `upsertWorktree` / `listWorktrees` / `deleteWorktree`.
-- **`ReviewFinding` → GitHub posting mapping**:
-  - Line-anchored finding → correct `createPullRequestComment` args (`commitId`, `path`, `line`, `startLine`, `side`).
-  - PR-level finding → `createPullRequestIssueComment`.
-  - `modifiedBody` takes precedence over `body`.
-  - Staleness warning shown when finding's `headRefOid ≠ current PR headRefOid`.
-- `ACPService` (in-memory ACP transport): assert `startReviewSession` creates session with correct prompt template. Assert process cleanup on `closeSession`. Assert second session for same PR key returns error.
+- `src/mcp/server.ts`:
+  - `report_finding`: spawn in both dev and standalone modes, send valid `tools/call`, assert `findings.jsonl` appended with correct JSON and UUID. Test invalid input → MCP error. Both modes produce identical output.
+  - `submit_pr_report`: send valid call, assert `report.json` written with `{ verdict, report, sessionId, submittedAt }`. Assert SQLite `review_reports` row upserted. Second call overwrites previous.
+  - `GHUI_SESSION_ID` env var is present in the written `report.json`.
+- **Partial-line safety**: write a file with a partial last line, run a poll cycle, assert skip; complete the line, assert processed on next cycle.
+- `CacheService` migration `002_acp_review`: all four tables and indexes exist; round-trip all new methods (`upsertWorktree`, `upsertSession`, `endSession`, `listSessions`, `upsertReport`, `getReport`, `upsertFinding`, `listFindings`, `updateFindingStatus`, `markFindingPosted`).
+- **`ReviewFinding` → GitHub posting mapping**: line-anchored → correct `createPullRequestComment` args. PR-level → `createPullRequestIssueComment`. `modifiedBody` over `body`. Staleness warning when finding `headRefOid ≠ current PR headRefOid`.
+- `ACPService` (in-memory transport): `startReviewSession` persists a `ReviewSession` row with the ACP-assigned `sessionId`. `endSession` is called on `prompt` return. Second `startReviewSession` for same PR key while first is active returns error. Process cleanup on `closeSession`.
 
 ### Integration tests
 
-- End-to-end review session: real `ghui mcp-server` subprocess, fake ACP agent that calls `report_finding` once then completes. Assert finding appears in SQLite and in `findings.jsonl`.
-- Human comment round-trip: draft via `HumanCommentModal`, assert `source = "human"` in SQLite and appended to `human-comments.jsonl`.
+- End-to-end review session: real `ghui mcp-server`, fake ACP agent that calls `report_finding` once and `submit_pr_report` once then completes. Assert finding in SQLite + `findings.jsonl`; assert report in SQLite + `report.json`.
+- Human comment round-trip: `source = "human"` in SQLite, appended to `human-comments.jsonl`.
 - Status transitions: accept → post cycle (mock `GitHubService`), assert `posted_url` set.
-- Orphan process: start ACP session, SIGTERM ghui, assert `opencode acp` child process also terminates.
-- Worktree creation/removal: `WorktreeService.create` runs `git worktree add`, result appears in SQLite. `WorktreeService.remove` runs `git worktree remove`.
+- Orphan process: SIGTERM ghui, assert `opencode acp` child terminates.
+- Worktree lifecycle: `WorktreeService.create` → `git worktree add` invoked, row in SQLite. `WorktreeService.remove` → `git worktree remove` invoked, row deleted.
 
 ### Manual smoke test
 
