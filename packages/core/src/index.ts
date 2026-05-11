@@ -112,4 +112,6 @@ export {
 	classifyInboxSection,
 } from "./inbox.js"
 
+export { WorktreeService, WorktreeError } from "./services/WorktreeService.js"
+
 export { makeCoreLayer, type CoreLayerOptions } from "./runtime.js"
