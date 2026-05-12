@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query"
 import { coreBridge } from "../hooks/useCoreBridge.js"
 import { LabelBadge } from "./LabelBadge.js"
+import { LabelManager } from "./LabelManager.js"
+import { SubmitReview } from "./SubmitReview.js"
 import { StatusChecks } from "./StatusChecks.js"
 import Markdown from "react-markdown"
 
@@ -42,16 +44,17 @@ export const PRDetail = ({ repo, number }: PRDetailProps) => {
 				<button onClick={() => coreBridge.copyToClipboard(pr.url)}>Copy URL</button>
 			</div>
 
-			{pr.labels.length > 0 && (
-				<div className="pr-detail-section">
-					<div className="pr-detail-section-title">Labels</div>
+			<div className="pr-detail-section">
+				<div className="pr-detail-section-title">Labels</div>
+				{pr.labels.length > 0 && (
 					<div className="labels-list">
 						{pr.labels.map((label) => (
 							<LabelBadge key={label.name} label={label} />
 						))}
 					</div>
-				</div>
-			)}
+				)}
+				<LabelManager repo={repo} number={number} currentLabels={pr.labels} />
+			</div>
 
 			{(pr.assignees.length > 0 || pr.reviewRequests.length > 0) && (
 				<div className="pr-detail-section">
@@ -91,11 +94,13 @@ export const PRDetail = ({ repo, number }: PRDetailProps) => {
 				</div>
 			)}
 
-		{pr.body && (
-			<div className="pr-detail-body">
-				<Markdown>{pr.body}</Markdown>
-			</div>
-		)}
+			{pr.body && (
+				<div className="pr-detail-body">
+					<Markdown>{pr.body}</Markdown>
+				</div>
+			)}
+
+			<SubmitReview repo={repo} number={number} />
 		</div>
 	)
 }

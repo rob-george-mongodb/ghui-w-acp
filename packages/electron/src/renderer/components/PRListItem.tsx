@@ -59,9 +59,10 @@ interface PRListItemProps {
 	pr: PullRequestItem
 	selected: boolean
 	onSelect: () => void
+	unresolvedCount: number
 }
 
-export const PRListItem = ({ pr, selected, onSelect }: PRListItemProps) => {
+export const PRListItem = ({ pr, selected, onSelect, unresolvedCount }: PRListItemProps) => {
 	return (
 		<div className={`pr-list-item ${selected ? "selected" : ""}`} onClick={onSelect}>
 			<div className="pr-list-item-header">
@@ -74,6 +75,7 @@ export const PRListItem = ({ pr, selected, onSelect }: PRListItemProps) => {
 				{reviewIcon(pr.reviewStatus)}
 				{checkIcon(pr.checkStatus)}
 				{pr.totalCommentsCount > 0 && <span>💬 {pr.totalCommentsCount}</span>}
+				{unresolvedCount > 0 && <span className="pr-unresolved-badge">{unresolvedCount} unresolved</span>}
 				<span className="pr-list-item-diffstat">
 					<span className="diffstat-add">+{pr.additions}</span> <span className="diffstat-del">-{pr.deletions}</span>
 				</span>

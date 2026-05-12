@@ -1,7 +1,7 @@
 import { useMemo } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import type { PullRequestComment } from "@ghui/core"
-import { isReviewComment } from "@ghui/core"
+import { orderCommentsForDisplay, findReviewThreadRootId } from "@ghui/core"
 import { coreBridge } from "../hooks/useCoreBridge.js"
 import { CommentThread } from "./CommentThread.js"
 
@@ -11,32 +11,10 @@ interface CommentsPaneProps {
 	onClose: () => void
 }
 
-type Thread = { id: string; comments: PullRequestComment[] }
-
-const buildThreads = (comments: readonly PullRequestComment[]): Thread[] => {
-	const threads: Thread[] = []
-	const replyMap = new Map<string, Thread>()
-
-	for (const comment of comments) {
-		if (isReviewComment(comment) && comment.inReplyTo) {
-			const parent = replyMap.get(comment.inReplyTo)
-			if (parent) {
-				parent.comments.push(comment)
-				replyMap.set(comment.id, parent)
-				continue
-			}
-		}
-		const thread: Thread = { id: comment.id, comments: [comment] }
-		threads.push(thread)
-		replyMap.set(comment.id, thread)
-	}
-
-	return threads
-}
-
 export const CommentsPane = ({ repo, number, onClose }: CommentsPaneProps) => {
 	const queryClient = useQueryClient()
 	const commentsKey = ["pr:comments", repo, number] as const
+	const prKey = `${repo}#${number}`
 
 	const { data: comments, isLoading } = useQuery({
 		queryKey: commentsKey,
@@ -48,24 +26,63 @@ export const CommentsPane = ({ repo, number, onClose }: CommentsPaneProps) => {
 		queryFn: () => coreBridge.getAuthenticatedUser(),
 	})
 
-	const invalidate = () => queryClient.invalidateQueries({ queryKey: commentsKey })
+	const { data: trackedComments } = useQuery({
+		queryKey: ["comment:tracked", prKey],
+		queryFn: () => coreBridge.listTrackedComments(prKey),
+	})
 
-	const createComment = useMutation({
-		mutationFn: (body: string) => coreBridge.createIssueComment(repo, number, body),
-		onSuccess: invalidate,
+	const trackedByCommentId = useMemo(() => new Map((trackedComments ?? []).map((t) => [t.commentId, t])), [trackedComments])
+
+	const invalidate = () => {
+		queryClient.invalidateQueries({ queryKey: commentsKey })
+		queryClient.invalidateQueries({ queryKey: ["comment:tracked", prKey] })
+	}
+
+	const replyToThread = useMutation({
+		mutationFn: ({ threadRootComment, body }: { threadRootComment: PullRequestComment; body: string }) => {
+			if (threadRootComment._tag === "review-comment") {
+				const rootId = findReviewThreadRootId(comments ?? [], threadRootComment.id)
+				return coreBridge.replyToReviewComment(repo, number, rootId, body)
+			}
+			return coreBridge.createIssueComment(repo, number, body)
+		},
+		onSuccess: (result) => {
+			invalidate()
+			void coreBridge.trackComment(result.id, prKey)
+		},
 	})
 
 	const editComment = useMutation({
-		mutationFn: ({ id, body }: { id: string; body: string }) => coreBridge.editComment(repo, id, body),
+		mutationFn: ({ id, tag, body }: { id: string; tag: PullRequestComment["_tag"]; body: string }) =>
+			tag === "review-comment" ? coreBridge.editComment(repo, id, body) : coreBridge.editIssueComment(repo, id, body),
 		onSuccess: invalidate,
 	})
 
 	const deleteComment = useMutation({
-		mutationFn: (id: string) => coreBridge.deleteComment(repo, id),
+		mutationFn: ({ id, tag }: { id: string; tag: PullRequestComment["_tag"] }) =>
+			tag === "review-comment" ? coreBridge.deleteComment(repo, id) : coreBridge.deleteIssueComment(repo, id),
 		onSuccess: invalidate,
 	})
 
-	const threads = useMemo(() => buildThreads(comments ?? []), [comments])
+	const resolveComment = useMutation({
+		mutationFn: (commentId: string) => coreBridge.resolveComment(commentId),
+		onSuccess: invalidate,
+	})
+
+	const ordered = useMemo(() => orderCommentsForDisplay(comments ?? []), [comments])
+
+	const threads = useMemo(() => {
+		const result: { rootComment: PullRequestComment; comments: PullRequestComment[] }[] = []
+		for (const { comment, indent } of ordered) {
+			if (indent === 0) {
+				result.push({ rootComment: comment, comments: [comment] })
+			} else {
+				const last = result[result.length - 1]
+				if (last) last.comments.push(comment)
+			}
+		}
+		return result
+	}, [ordered])
 
 	return (
 		<div className="comments-pane-inner">
@@ -83,12 +100,14 @@ export const CommentsPane = ({ repo, number, onClose }: CommentsPaneProps) => {
 			<div className="comments-pane-list">
 				{threads.map((thread) => (
 					<CommentThread
-						key={thread.id}
+						key={thread.rootComment.id}
 						comments={thread.comments}
 						currentUser={currentUser ?? null}
-						onReply={(body) => createComment.mutate(body)}
-						onEdit={(id, body) => editComment.mutate({ id, body })}
-						onDelete={(id) => deleteComment.mutate(id)}
+						trackedByCommentId={trackedByCommentId}
+						onReply={(body) => replyToThread.mutate({ threadRootComment: thread.rootComment, body })}
+						onEdit={(id, tag, body) => editComment.mutate({ id, tag, body })}
+						onDelete={(id, tag) => deleteComment.mutate({ id, tag })}
+						onResolve={(commentId) => resolveComment.mutate(commentId)}
 					/>
 				))}
 			</div>

@@ -981,10 +981,10 @@ export class GitHubService extends Context.Service<
 						author: "you",
 						body,
 						createdAt: new Date(),
-					url: null,
-					inReplyTo,
-					outdated: false,
-				}
+						url: null,
+						inReplyTo,
+						outdated: false,
+					}
 				}
 				return reviewCommentAsComment({ ...review, inReplyTo: review.inReplyTo ?? inReplyTo })
 			})
@@ -1045,10 +1045,10 @@ export class GitHubService extends Context.Service<
 						author: "you",
 						body,
 						createdAt: new Date(),
-					url: null,
-					inReplyTo: null,
-					outdated: false,
-				}
+						url: null,
+						inReplyTo: null,
+						outdated: false,
+					}
 				}
 				return reviewCommentAsComment(review)
 			})

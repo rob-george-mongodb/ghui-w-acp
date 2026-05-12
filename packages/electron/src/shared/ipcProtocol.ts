@@ -3,7 +3,6 @@ import type {
 	CreatePullRequestCommentInput,
 	PullRequestComment,
 	PullRequestItem,
-	PullRequestLabel,
 	PullRequestMergeAction,
 	PullRequestMergeInfo,
 	PullRequestPage,
