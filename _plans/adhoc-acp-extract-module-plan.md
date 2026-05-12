@@ -1,6 +1,6 @@
 # Plan: Extract ACP to a standalone `@ghui/acp` package
 
-**Status**: Revised draft — awaiting human signoff  
+**Status**: ✅ Approved — ready for implementation  
 **Branch**: `adhoc-plan/acp-extract-module-1`  
 **Research files**: `_findings/codebase-research-*.md` (existing corpus)
 
