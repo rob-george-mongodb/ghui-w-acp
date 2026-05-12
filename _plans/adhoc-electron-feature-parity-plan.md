@@ -4,7 +4,7 @@
 
 The Electron app (`packages/electron`) was built to the spec in `_plans/adhoc-electron-app-plan.md` and is functional, but is missing several features compared to the terminal TUI (`src/App.tsx`). Additionally the comment viewing experience has correctness bugs and needs new capabilities:
 
-1. **Feature parity gaps** — Submit review, label management, inbox tab, rendered markdown body, and load-more pagination are absent from the Electron UI.
+1. **Feature parity gaps** — Submit review, label management, inbox tab, rendered markdown body, and load-more pagination are absent from the Electron UI. **Merge controls are being removed** from the Electron view (out of scope for this iteration).
 2. **Comment threading bugs** — The Electron `buildThreads` function is a simplified linear grouper that misses issue-comment quote-reply threading and produces no indentation depth. The terminal's `orderCommentsForDisplay` has this logic and should be ported.
 3. **Reply/edit/delete routing bugs** — `CommentsPane` always calls `createIssueComment` on reply (wrong for review threads) and always calls `editReviewComment`/`deleteReviewComment` for edits/deletes (wrong for issue comments).
 4. **Outdated thread coherence** — GitHub marks review comment threads as "outdated" when the PR head advances. The `outdated` field is available in the GitHub REST response but is not currently fetched or rendered. The requirement is to show ALL unresolved threads, including outdated ones, and to surface the outdated status visually.
@@ -22,7 +22,7 @@ The Electron app (`packages/electron`) was built to the spec in `_plans/adhoc-el
 - `packages/electron/src/renderer/components/CommentThread.tsx` — renders single thread; reply always calls `onReply(body)` → `createIssueComment` (bug)
 - `packages/electron/src/renderer/components/PRDetail.tsx` — shows PR metadata; body rendered as raw text (no markdown); no submit review UI; label badges shown but no add/remove UI
 - `packages/electron/src/renderer/components/PRList.tsx` — tabs for queue modes, but `"inbox"` explicitly filtered out (L53); no "Load more" button
-- `packages/electron/src/renderer/components/MergeControls.tsx` — merge/close/draft toggle; functional
+- `packages/electron/src/renderer/components/MergeControls.tsx` — **will be removed** from PRDetail; the component file may remain but will no longer be imported
 - `packages/electron/src/renderer/hooks/useCoreBridge.ts` — typed IPC wrappers; missing `replyToReviewComment`, `editIssueComment`, `deleteIssueComment`, comment-tracking channels
 - `packages/electron/src/shared/ipcProtocol.ts` — channel types; same omissions as above
 - `packages/electron/src/main/ipc.ts` — IPC handlers; same omissions
@@ -43,6 +43,11 @@ The Electron app (`packages/electron`) was built to the spec in `_plans/adhoc-el
 | Inbox queue mode | `pullRequestQueueModes` includes "inbox"; PRList.tsx filters it out |
 | Rendered markdown body | PRDetail shows `{pr.body}` as raw text |
 | Load more (pagination) | No "Load more" button; Electron always loads a single page |
+
+### Terminal features being deliberately removed from Electron
+| Feature | Decision |
+|---|---|
+| Merge controls (merge / close / draft toggle) | Removed from Electron view for this iteration |
 
 ---
 
@@ -98,9 +103,12 @@ CREATE INDEX IF NOT EXISTS idx_ghui_comment_tracking_pr_key
 trackComment(commentId: string, prKey: string): Effect<void, never>
 resolveComment(commentId: string): Effect<void, never>
 listTrackedComments(prKey: string): Effect<readonly TrackedComment[], CacheError>
+listAllUnresolvedTrackedComments(): Effect<readonly TrackedComment[], CacheError>
 ```
 
-`trackComment` and `resolveComment` use `Effect.fn("CacheService.xxx")` and swallow errors (consistent with `upsertWorktree`, `deleteWorktree`, etc.). `listTrackedComments` returns `CacheError` on decode failure, consistent with `listFindings`.
+`trackComment` and `resolveComment` use `Effect.fn("CacheService.xxx")` and swallow errors (consistent with `upsertWorktree`, `deleteWorktree`, etc.). `listTrackedComments` and `listAllUnresolvedTrackedComments` return `CacheError` on decode failure, consistent with `listFindings`.
+
+`listAllUnresolvedTrackedComments` queries `WHERE resolved = 0` with no `pr_key` filter, returning all ghui-sourced unresolved comments across all PRs. The renderer groups these by `prKey` to compute per-PR badge counts without N separate IPC calls.
 
 `TrackedComment` is a new domain type added to `packages/core/src/domain.ts`:
 
@@ -146,6 +154,7 @@ Add channels:
 "comment:track":             { args: [commentId: string, prKey: string]; result: void }
 "comment:resolve":           { args: [commentId: string]; result: void }
 "comment:listTracked":       { args: [prKey: string]; result: readonly TrackedComment[] }
+"comment:listAllUnresolved": { args: []; result: readonly TrackedComment[] }
 ```
 
 Existing channels that are **already present** but need handlers noted:
@@ -175,6 +184,9 @@ handle("comment:resolve", (commentId) =>
 
 handle("comment:listTracked", (prKey) =>
   CacheService.use(c => c.listTrackedComments(prKey)))
+
+handle("comment:listAllUnresolved", () =>
+  CacheService.use(c => c.listAllUnresolvedTrackedComments()))
 ```
 
 **File: `packages/electron/src/renderer/hooks/useCoreBridge.ts`**
@@ -459,9 +471,48 @@ const [allItems, setAllItems] = useState<PullRequestItem[]>([])
 )}
 ```
 
+### Work Area 13 — PR list unresolved badge
+
+**File: `packages/electron/src/renderer/components/PRList.tsx`**
+
+After the PR list query resolves, issue one bulk IPC call:
+
+```ts
+const { data: allUnresolved } = useQuery({
+  queryKey: ["comment:allUnresolved"],
+  queryFn: () => coreBridge.listAllUnresolvedTrackedComments(),
+  staleTime: 60_000,
+})
+
+const unresolvedByPrKey = useMemo(
+  () => {
+    const map = new Map<string, number>()
+    for (const t of allUnresolved ?? []) {
+      map.set(t.prKey, (map.get(t.prKey) ?? 0) + 1)
+    }
+    return map
+  },
+  [allUnresolved]
+)
+```
+
+Pass `unresolvedCount={unresolvedByPrKey.get(prKey) ?? 0}` down to `PRListItem`.
+
+**File: `packages/electron/src/renderer/components/PRListItem.tsx`**
+
+When `unresolvedCount > 0`, render a badge in the item row:
+
+```tsx
+{unresolvedCount > 0 && (
+  <span className="pr-unresolved-badge">{unresolvedCount} unresolved</span>
+)}
+```
+
+The badge uses a distinct colour (e.g. amber/yellow) to distinguish from the general comment count indicator.
+
 ---
 
-## Implementation Order
+
 
 1. Add `outdated: boolean` to `PullRequestReviewComment` domain type + schema (`Schema.optionalKey`, `?? false` fallback in parser)
 2. Add `TrackedComment` domain type to `packages/core/src/domain.ts`
@@ -481,6 +532,7 @@ const [allItems, setAllItems] = useState<PullRequestItem[]>([])
 16. `SubmitReview` component
 17. `LabelManager` component
 18. Load more pagination in `PRList.tsx`
+19. PR list unresolved badge in `PRList.tsx` / `PRListItem.tsx` (bulk `comment:listAllUnresolved` fetch)
 
 ---
 
@@ -494,7 +546,7 @@ const [allItems, setAllItems] = useState<PullRequestItem[]>([])
 6. **Edit/delete routing test** — Unit test that verifies: editing/deleting a `_tag === "review-comment"` calls the review endpoint; editing/deleting a `_tag === "comment"` calls the issue-comment endpoint.
 7. **IPC contract test** — Extend existing Electron IPC contract tests to cover `pr:reviewComment:reply`, `pr:issueComment:edit`, `pr:issueComment:delete`, `comment:track`, `comment:resolve`, `comment:listTracked`.
 8. **Resolution state roundtrip** — Test that: (a) creating a comment inserts a row in `ghui_comment_tracking`, (b) `listTrackedComments` returns it with `resolved: false`, (c) calling `resolveComment` flips the flag and sets `resolved_at`.
-9. **Manual smoke** — Launch Electron app. Verify: inbox tab appears, PR body renders as markdown, label manager opens, submit review fires successfully, comments thread correctly with indent, outdated badge appears on an outdated thread, creating a comment shows the unresolved indicator, Resolve button marks it resolved.
+9. **Manual smoke** — Launch Electron app. Verify: inbox tab appears, PR body renders as markdown, label manager opens, submit review fires successfully, comments thread correctly with indent, outdated badge appears on an outdated thread, creating a comment shows the unresolved indicator, Resolve button marks it resolved, PR list items show the unresolved badge count when ghui-sourced comments are unresolved.
 
 ---
 
@@ -511,9 +563,9 @@ const [allItems, setAllItems] = useState<PullRequestItem[]>([])
 
 ## Open Questions
 
-1. **Should the PR list item show a badge for unresolved ghui-sourced comments?** E.g. `2 unresolved` next to the comment count. This would require fetching `listTrackedComments` for every visible PR, which is expensive. The safer option is to show the badge only for the currently selected PR. — **Need human sign-off.**
-2. **`react-markdown`** — Any objection to adding it? — **Need human sign-off.**
-3. **Submit review placement** — placed below merge controls in `PRDetail`. Should it be in the `CommentsPane` instead? — **Need human sign-off.**
+1. **Should the PR list item show a badge for unresolved ghui-sourced comments?** — **Resolved: YES.** Show `N unresolved` badge per PR list item. Use a bulk `listAllUnresolvedTrackedComments()` fetch (no `pr_key` filter) so the renderer can group by `prKey`; avoids N IPC calls. See Work Area 3 (new `comment:listAllUnresolved` channel) and Work Area 13 (PR list badge UI).
+2. **`react-markdown`** — **Resolved: YES.** Add it. See Work Area 11.
+3. **Submit review placement** — **Resolved: in `PRDetail`, below where merge controls were.** See Work Area 8.
 
 ---
 
