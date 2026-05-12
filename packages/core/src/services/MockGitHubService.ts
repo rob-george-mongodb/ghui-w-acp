@@ -159,12 +159,13 @@ export const MockGitHubService = {
 				url: null,
 				path: "src/App.tsx",
 				line: 42,
-				side: "RIGHT",
-				inReplyTo: null,
-			},
-			{
-				_tag: "review-comment",
-				id: `mock-review:${repository}:${number}:2`,
+			side: "RIGHT",
+			inReplyTo: null,
+			outdated: false,
+		},
+		{
+			_tag: "review-comment",
+			id: `mock-review:${repository}:${number}:2`,
 				author: "another-reviewer",
 				body: "Threaded reply on the same line — should render indented.",
 				createdAt: new Date(Date.now() - 1_200_000),
@@ -172,9 +173,10 @@ export const MockGitHubService = {
 				path: "src/App.tsx",
 				line: 42,
 				side: "RIGHT",
-				inReplyTo: `mock-review:${repository}:${number}:1`,
-			},
-		]
+			inReplyTo: `mock-review:${repository}:${number}:1`,
+			outdated: false,
+		},
+	]
 		const reviewComments = (repository: string, number: number): readonly PullRequestReviewComment[] =>
 			comments(repository, number).flatMap((comment) =>
 				comment._tag === "review-comment"
@@ -188,8 +190,9 @@ export const MockGitHubService = {
 								body: comment.body,
 								createdAt: comment.createdAt,
 								url: comment.url,
-								inReplyTo: comment.inReplyTo,
-							},
+						inReplyTo: comment.inReplyTo,
+						outdated: comment.outdated,
+					},
 						]
 					: [],
 			)
@@ -230,8 +233,9 @@ export const MockGitHubService = {
 						body: input.body,
 						createdAt: new Date(),
 						url: null,
-						inReplyTo: null,
-					} satisfies PullRequestReviewComment),
+					inReplyTo: null,
+					outdated: false,
+				} satisfies PullRequestReviewComment),
 				createPullRequestIssueComment: (_repo, _number, body) =>
 					Effect.succeed({
 						_tag: "comment" as const,
@@ -251,9 +255,10 @@ export const MockGitHubService = {
 						author: username,
 						body,
 						createdAt: new Date(),
-						url: null,
-						inReplyTo,
-					}),
+					url: null,
+					inReplyTo,
+					outdated: false,
+				}),
 				editPullRequestIssueComment: (_repo, commentId, body) =>
 					Effect.succeed({
 						_tag: "comment" as const,
@@ -275,6 +280,7 @@ export const MockGitHubService = {
 						createdAt: new Date(),
 						url: null,
 						inReplyTo: null,
+						outdated: false,
 					}),
 				deletePullRequestIssueComment: () => Effect.void,
 				deleteReviewComment: () => Effect.void,

@@ -180,6 +180,7 @@ const PullRequestCommentSchema = Schema.Struct({
 	original_line: OptionalNullableNumber,
 	side: Schema.optionalKey(Schema.NullOr(DiffCommentSide)),
 	in_reply_to_id: Schema.optionalKey(Schema.NullOr(Schema.Union([Schema.Number, Schema.String]))),
+	outdated: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
 })
 
 const PullRequestFileSchema = Schema.Struct({
@@ -585,6 +586,7 @@ const parsePullRequestComment = (comment: RawPullRequestComment): PullRequestRev
 		line,
 		side: comment.side,
 		inReplyTo,
+		outdated: comment.outdated ?? false,
 	}
 }
 
@@ -647,6 +649,7 @@ const fallbackCreatedComment = (input: CreatePullRequestCommentInput): PullReque
 	createdAt: new Date(),
 	url: null,
 	inReplyTo: null,
+	outdated: false,
 })
 
 export { parsePullRequestSummary, parsePullRequest, getCheckInfoFromContexts, pullRequestPage, searchQuery, STATUS_CHECKS_LIMIT }
@@ -978,9 +981,10 @@ export class GitHubService extends Context.Service<
 						author: "you",
 						body,
 						createdAt: new Date(),
-						url: null,
-						inReplyTo,
-					}
+					url: null,
+					inReplyTo,
+					outdated: false,
+				}
 				}
 				return reviewCommentAsComment({ ...review, inReplyTo: review.inReplyTo ?? inReplyTo })
 			})
@@ -1041,9 +1045,10 @@ export class GitHubService extends Context.Service<
 						author: "you",
 						body,
 						createdAt: new Date(),
-						url: null,
-						inReplyTo: null,
-					}
+					url: null,
+					inReplyTo: null,
+					outdated: false,
+				}
 				}
 				return reviewCommentAsComment(review)
 			})

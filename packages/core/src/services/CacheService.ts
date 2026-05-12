@@ -3,7 +3,7 @@ import * as SqlClient from "effect/unstable/sql/SqlClient"
 import type { SqlError } from "effect/unstable/sql/SqlError"
 import { checkConclusions, checkRollupStatuses, checkRunStatuses, pullRequestQueueModes, pullRequestStates, reviewStatuses, type PullRequestItem } from "../domain.js"
 import { mergeCachedDetails } from "../pullRequestCache.js"
-import type { FindingStatus, ReviewFinding, ReviewReport, ReviewSession, ReviewWorktree, SessionMessage } from "../domain.js"
+import type { FindingStatus, ReviewFinding, ReviewReport, ReviewSession, ReviewWorktree, SessionMessage, TrackedComment } from "../domain.js"
 import type { PullRequestLoad } from "../pullRequestLoad.js"
 import { type PullRequestView, viewCacheKey } from "../pullRequestViews.js"
 
@@ -143,6 +143,14 @@ interface ReviewFindingRow {
 	readonly posted_url: string | null
 	readonly created_at: string
 	readonly updated_at: string
+}
+
+interface TrackedCommentRow {
+	readonly comment_id: string
+	readonly pr_key: string
+	readonly resolved: number
+	readonly resolved_at: string | null
+	readonly created_at: string
 }
 
 export const pullRequestCacheKey = ({ repository, number }: PullRequestCacheKey) => `${repository}#${number}`
@@ -358,6 +366,18 @@ export const cacheMigrations = {
 		yield* sql`CREATE INDEX IF NOT EXISTS idx_review_findings_pr_key
 			ON review_findings (pr_key)`
 	}),
+	"003_comment_tracking": Effect.gen(function* () {
+		const sql = yield* SqlClient.SqlClient
+		yield* sql`CREATE TABLE IF NOT EXISTS ghui_comment_tracking (
+			comment_id   TEXT NOT NULL PRIMARY KEY,
+			pr_key       TEXT NOT NULL,
+			resolved     INTEGER NOT NULL DEFAULT 0,
+			resolved_at  TEXT,
+			created_at   TEXT NOT NULL
+		)`
+		yield* sql`CREATE INDEX IF NOT EXISTS idx_ghui_comment_tracking_pr_key
+			ON ghui_comment_tracking (pr_key)`
+	}),
 } satisfies Record<string, Effect.Effect<void, unknown, SqlClient.SqlClient>>
 
 const pullRequestRow = (pullRequest: PullRequestItem, updatedAt = new Date().toISOString()) => ({
@@ -407,6 +427,10 @@ const pruneSql = (sql: SqlClient.SqlClient) => {
 			AND pr_key NOT IN (
 				SELECT value FROM queue_snapshots, json_each(queue_snapshots.pr_keys_json)
 			)`
+		yield* sql`DELETE FROM ghui_comment_tracking
+			WHERE pr_key NOT IN (
+				SELECT value FROM queue_snapshots, json_each(queue_snapshots.pr_keys_json)
+			) AND created_at < ${cutoff}`
 	}).pipe(Effect.catch(() => Effect.void))
 }
 
@@ -699,6 +723,53 @@ const liveCacheService = (sql: SqlClient.SqlClient) => {
 			WHERE id = ${id}`.pipe(Effect.catch(() => Effect.void))
 	})
 
+	const trackComment = Effect.fn("CacheService.trackComment")(function* (commentId: string, prKey: string) {
+		yield* sql`INSERT INTO ghui_comment_tracking ${sql.insert({
+			comment_id: commentId,
+			pr_key: prKey,
+			resolved: 0,
+			resolved_at: null,
+			created_at: new Date().toISOString(),
+		})} ON CONFLICT(comment_id) DO NOTHING`.pipe(Effect.catch(() => Effect.void))
+	})
+
+	const resolveComment = Effect.fn("CacheService.resolveComment")(function* (commentId: string) {
+		yield* sql`UPDATE ghui_comment_tracking SET
+			resolved = 1,
+			resolved_at = ${new Date().toISOString()}
+			WHERE comment_id = ${commentId}`.pipe(Effect.catch(() => Effect.void))
+	})
+
+	const listTrackedComments = (prKey: string): Effect.Effect<readonly TrackedComment[], CacheError> =>
+		sql<TrackedCommentRow>`SELECT comment_id, pr_key, resolved, resolved_at, created_at
+			FROM ghui_comment_tracking WHERE pr_key = ${prKey} ORDER BY created_at ASC`.pipe(
+			Effect.map((rows) =>
+				rows.map((row) => ({
+					commentId: row.comment_id,
+					prKey: row.pr_key,
+					resolved: row.resolved === 1,
+					resolvedAt: row.resolved_at ? new Date(row.resolved_at) : null,
+					createdAt: new Date(row.created_at),
+				})),
+			),
+			Effect.mapError((cause) => toCacheError("listTrackedComments", cause)),
+		)
+
+	const listAllUnresolvedTrackedComments = (): Effect.Effect<readonly TrackedComment[], CacheError> =>
+		sql<TrackedCommentRow>`SELECT comment_id, pr_key, resolved, resolved_at, created_at
+			FROM ghui_comment_tracking WHERE resolved = 0 ORDER BY created_at ASC`.pipe(
+			Effect.map((rows) =>
+				rows.map((row) => ({
+					commentId: row.comment_id,
+					prKey: row.pr_key,
+					resolved: false,
+					resolvedAt: null,
+					createdAt: new Date(row.created_at),
+				})),
+			),
+			Effect.mapError((cause) => toCacheError("listAllUnresolvedTrackedComments", cause)),
+		)
+
 	return {
 		readQueue,
 		writeQueue,
@@ -719,6 +790,10 @@ const liveCacheService = (sql: SqlClient.SqlClient) => {
 		listFindings,
 		updateFindingStatus,
 		markFindingPosted,
+		trackComment,
+		resolveComment,
+		listTrackedComments,
+		listAllUnresolvedTrackedComments,
 	}
 }
 
@@ -744,6 +819,10 @@ export class CacheService extends Context.Service<
 		readonly listFindings: (prKey: string) => Effect.Effect<readonly ReviewFinding[], CacheError>
 		readonly updateFindingStatus: (id: string, status: FindingStatus, modifiedBody?: string) => Effect.Effect<void, never>
 		readonly markFindingPosted: (id: string, url: string) => Effect.Effect<void, never>
+		readonly trackComment: (commentId: string, prKey: string) => Effect.Effect<void, never>
+		readonly resolveComment: (commentId: string) => Effect.Effect<void, never>
+		readonly listTrackedComments: (prKey: string) => Effect.Effect<readonly TrackedComment[], CacheError>
+		readonly listAllUnresolvedTrackedComments: () => Effect.Effect<readonly TrackedComment[], CacheError>
 	}
 >()("ghui/CacheService") {
 	static readonly disabledLayer = Layer.succeed(
@@ -768,6 +847,10 @@ export class CacheService extends Context.Service<
 			listFindings: () => Effect.succeed([]),
 			updateFindingStatus: () => Effect.void,
 			markFindingPosted: () => Effect.void,
+			trackComment: () => Effect.void,
+			resolveComment: () => Effect.void,
+			listTrackedComments: () => Effect.succeed([]),
+			listAllUnresolvedTrackedComments: () => Effect.succeed([]),
 		}),
 	)
 

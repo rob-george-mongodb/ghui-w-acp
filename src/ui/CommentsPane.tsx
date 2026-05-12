@@ -1,17 +1,8 @@
 import { useEffect, useMemo, useRef } from "react"
 import { TextAttributes, type ScrollBoxRenderable } from "@opentui/core"
-import type { PullRequestComment, PullRequestItem } from "@ghui/core"
+import type { PullRequestComment, PullRequestItem, OrderedComment } from "@ghui/core"
 import { colors } from "./colors.js"
-import {
-	commentBodyRows,
-	commentCountText,
-	commentMetaSegments,
-	CommentSegmentsLine,
-	QUOTE_HEADER_RE,
-	stripQuoteHeader,
-	type CommentDisplayLine,
-	type CommentSegment,
-} from "./comments.js"
+import { commentBodyRows, commentCountText, commentMetaSegments, CommentSegmentsLine, stripQuoteHeader, type CommentDisplayLine, type CommentSegment } from "./comments.js"
 import { truncateConversationPath } from "./DetailsPane.js"
 import { centerCell, Divider, Filler, PaddedRow, PlainLine, TextLine } from "./primitives.js"
 import { shortRepoName } from "./pullRequests.js"
@@ -24,8 +15,6 @@ const PLACEHOLDER_KEY = "__placeholder_new_comment"
 const PLACEHOLDER_ROWS = 1
 export const commentsViewRowCount = (count: number) => count + PLACEHOLDER_ROWS
 
-// Cap nesting depth — deep chains otherwise eat the pane width.
-const MAX_INDENT_LEVELS = 3
 const REPLY_INDENT_COLS = 4
 
 interface CommentBlock {
@@ -43,93 +32,6 @@ const reviewContextGroups = (comment: PullRequestComment, width: number): readon
 	const pathLabel = `${comment.path}:${comment.line}`
 	const room = Math.max(8, width - META_PREFIX_WIDTH - comment.author.length - 16)
 	return [[{ text: truncateConversationPath(pathLabel, room), fg: colors.inlineCode }]]
-}
-
-// GitHub doesn't thread issue comments, so `issueQuoteParent` reverse-engineers
-// the parent from the `> @author wrote:` header that `quotedReplyBody` writes.
-// `collapseWhitespace` makes the body comparison tolerant of the blank line
-// the parent inserts between its own quote header and reply text.
-const collapseWhitespace = (text: string): string =>
-	text
-		.split("\n")
-		.map((line) => line.trimEnd())
-		.filter((line) => line.length > 0)
-		.join("\n")
-		.trim()
-
-const issueQuoteParent = (
-	comment: PullRequestComment & { readonly _tag: "comment" },
-	candidates: readonly PullRequestComment[],
-	collapsedById: Map<string, string>,
-): string | null => {
-	const match = QUOTE_HEADER_RE.exec(comment.body)
-	if (!match) return null
-	const author = match[1] ?? ""
-	const quoted = collapseWhitespace(
-		(match[2] ?? "")
-			.split("\n")
-			.map((line) => line.replace(/^>\s?/, ""))
-			.join("\n"),
-	)
-	if (quoted.length === 0) return null
-	for (const candidate of candidates) {
-		if (candidate.id === comment.id) continue
-		if (candidate._tag !== "comment") continue
-		if (candidate.author !== author) continue
-		const body = collapsedById.get(candidate.id) ?? ""
-		if (body.length === 0) continue
-		if (body === quoted || body.startsWith(quoted) || quoted.startsWith(body)) return candidate.id
-	}
-	return null
-}
-
-export interface OrderedComment {
-	readonly comment: PullRequestComment
-	readonly indent: number
-}
-
-// Order comments so replies sit right after their parent: review threads via
-// `inReplyTo`, issue-comment quote replies via the heuristic above. Roots
-// preserve overall createdAt order; replies render at the parent's depth + 1
-// (capped at MAX_INDENT_LEVELS so deep chains don't run off the pane).
-export const orderCommentsForDisplay = (comments: readonly PullRequestComment[]): readonly OrderedComment[] => {
-	const byId = new Map<string, PullRequestComment>()
-	const collapsedIssueBodies = new Map<string, string>()
-	for (const comment of comments) {
-		byId.set(comment.id, comment)
-		if (comment._tag === "comment") collapsedIssueBodies.set(comment.id, collapseWhitespace(comment.body))
-	}
-
-	const parentIdFor = (comment: PullRequestComment): string | null => {
-		if (comment._tag === "review-comment") return comment.inReplyTo
-		return issueQuoteParent(comment, comments, collapsedIssueBodies)
-	}
-
-	const childrenByParent = new Map<string, PullRequestComment[]>()
-	const roots: PullRequestComment[] = []
-	for (const comment of comments) {
-		const parentId = parentIdFor(comment)
-		if (parentId && byId.has(parentId)) {
-			const list = childrenByParent.get(parentId) ?? []
-			list.push(comment)
-			childrenByParent.set(parentId, list)
-		} else {
-			roots.push(comment)
-		}
-	}
-
-	const byTime = (left: PullRequestComment, right: PullRequestComment) => (left.createdAt?.getTime() ?? 0) - (right.createdAt?.getTime() ?? 0)
-	const ordered: { readonly comment: PullRequestComment; readonly indent: number }[] = []
-	const visited = new Set<string>()
-	const visit = (comment: PullRequestComment, indent: number): void => {
-		if (visited.has(comment.id)) return
-		visited.add(comment.id)
-		ordered.push({ comment, indent: Math.min(indent, MAX_INDENT_LEVELS) })
-		const children = (childrenByParent.get(comment.id) ?? []).slice().sort(byTime)
-		for (const child of children) visit(child, indent + 1)
-	}
-	for (const root of roots) visit(root, 0)
-	return ordered
 }
 
 const buildBlocks = (ordered: readonly OrderedComment[], width: number): readonly CommentBlock[] =>

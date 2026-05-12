@@ -135,8 +135,8 @@ export const commentDisplayRows = ({
 ]
 
 // `quotedReplyBody` and `QUOTE_HEADER_RE` are paired — the producer's exact
-// header shape is what the matcher relies on to detect a quote-reply. Keep
-// them here so changes are one edit and the contract is obvious.
+// header shape is what the matcher relies on to detect a quote-reply.
+// `QUOTE_HEADER_RE` and `stripQuoteHeader` now live in `@ghui/core/commentThreading`.
 const QUOTE_BODY_LIMIT = 480
 
 export const quotedReplyBody = (author: string, body: string): string => {
@@ -151,15 +151,7 @@ export const quotedReplyBody = (author: string, body: string): string => {
 	return `> @${author} wrote:\n${quoted}\n\n`
 }
 
-export const QUOTE_HEADER_RE = /^>\s*@(\S+)\s+wrote:\s*\n((?:>[^\n]*(?:\n|$))+)/
-
-// Strip the leading `> @author wrote:` block; used when nesting a quote-reply
-// under its parent so the redundant quote text doesn't render.
-export const stripQuoteHeader = (body: string): string => {
-	const match = QUOTE_HEADER_RE.exec(body)
-	if (!match) return body
-	return body.slice(match[0].length).replace(/^\n+/, "")
-}
+export { QUOTE_HEADER_RE, stripQuoteHeader } from "@ghui/core"
 
 export const firstCommentBodyLine = (body: string) => {
 	const text = body.trim().length > 0 ? body : "(empty comment)"

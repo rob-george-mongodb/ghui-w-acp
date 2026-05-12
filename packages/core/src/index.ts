@@ -68,6 +68,16 @@ export * from "./errors.js"
 export * from "./date.js"
 export * from "./commands.js"
 export * from "./mergeActions.js"
+export {
+	QUOTE_HEADER_RE,
+	stripQuoteHeader,
+	MAX_INDENT_LEVELS,
+	collapseWhitespace,
+	issueQuoteParent,
+	orderCommentsForDisplay,
+	findReviewThreadRootId,
+	type OrderedComment,
+} from "./commentThreading.js"
 export * from "./observability.js"
 export * from "./pullRequestCache.js"
 export * from "./pullRequestLoad.js"

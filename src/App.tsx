@@ -82,6 +82,8 @@ import {
 	INBOX_SECTIONS,
 	INBOX_SECTION_ORDER,
 	classifyInboxSection,
+	orderCommentsForDisplay,
+	findReviewThreadRootId,
 } from "@ghui/core/node"
 import { colors, filterThemeDefinitions, mixHex, pairedThemeId, setActiveTheme, themeDefinitions, themeToneForThemeId, type ThemeId, type ThemeTone } from "./ui/colors.js"
 import {
@@ -196,7 +198,7 @@ import {
 } from "./ui/modals.js"
 import { groupBy, pullRequestMetadataText } from "./ui/pullRequests.js"
 import { quotedReplyBody } from "./ui/comments.js"
-import { CommentsPane, commentsViewRowCount, orderCommentsForDisplay } from "./ui/CommentsPane.js"
+import { CommentsPane, commentsViewRowCount } from "./ui/CommentsPane.js"
 import { FindingsPanel, AskAIPanel, SessionViewerPanel, InitiateReviewModal, FindingEditModal, HumanCommentModal, PostFindingsModal } from "./ui/acpModals.js"
 import { PullRequestDiffPane } from "./ui/PullRequestDiffPane.js"
 import { buildPullRequestListRows, pullRequestListRowIndex, PullRequestList } from "./ui/PullRequestList.js"
@@ -650,22 +652,6 @@ const groupDiffCommentThreads = (pullRequest: PullRequestItem, comments: readonl
 const isLocalDiffComment = (comment: PullRequestReviewComment) => comment.id.startsWith("local:")
 
 const reviewCommentAsPullRequestComment = (comment: PullRequestReviewComment): PullRequestComment => ({ _tag: "review-comment", ...comment })
-
-// Walk the inReplyTo chain to find the thread root id. The /replies endpoint
-// rejects ids that aren't roots with "parent comment not found".
-const findReviewThreadRootId = (comments: readonly PullRequestComment[], commentId: string): string => {
-	const reviewById = new Map<string, PullRequestComment & { readonly _tag: "review-comment" }>()
-	for (const entry of comments) if (entry._tag === "review-comment") reviewById.set(entry.id, entry)
-	let cursor = reviewById.get(commentId)
-	const seen = new Set<string>()
-	while (cursor && cursor.inReplyTo && !seen.has(cursor.id)) {
-		seen.add(cursor.id)
-		const parent = reviewById.get(cursor.inReplyTo)
-		if (!parent) break
-		cursor = parent
-	}
-	return cursor?.id ?? commentId
-}
 
 const reviewStatusAfterSubmit = {
 	COMMENT: null,
@@ -2130,6 +2116,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 			createdAt: new Date(),
 			url: null,
 			inReplyTo: null,
+			outdated: false,
 		} satisfies PullRequestReviewComment
 		const rangeInput = targetRange && targetRange.start.line !== targetRange.end.line ? { startLine: targetRange.start.line, startSide: targetRange.start.side } : {}
 		const input = {
@@ -2289,6 +2276,7 @@ export const App = ({ systemThemeGeneration = 0 }: AppProps) => {
 				createdAt: new Date(),
 				url: null,
 				inReplyTo: target.inReplyTo,
+				outdated: false,
 			},
 			postingMessage: `Replying on ${target.anchorLabel}`,
 			successMessage: `Replied on ${target.anchorLabel}`,

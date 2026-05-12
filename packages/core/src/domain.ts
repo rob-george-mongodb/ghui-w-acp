@@ -117,6 +117,7 @@ export interface PullRequestReviewComment {
 	readonly createdAt: Date | null
 	readonly url: string | null
 	readonly inReplyTo: string | null
+	readonly outdated: boolean
 }
 
 export type PullRequestComment =
@@ -259,5 +260,13 @@ export interface ReviewWorktree {
 	readonly prKey: string
 	readonly worktreePath: string
 	readonly branchName: string
+	readonly createdAt: Date
+}
+
+export interface TrackedComment {
+	readonly commentId: string
+	readonly prKey: string
+	readonly resolved: boolean
+	readonly resolvedAt: Date | null
 	readonly createdAt: Date
 }
