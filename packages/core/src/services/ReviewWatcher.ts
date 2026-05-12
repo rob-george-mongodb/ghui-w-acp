@@ -58,10 +58,7 @@ export class ReviewWatcher extends Context.Service<
 					}
 				})
 
-			const readNewLines = (
-				path: string,
-				lastOffset: number,
-			): { lines: readonly string[]; newOffset: number } => {
+			const readNewLines = (path: string, lastOffset: number): { lines: readonly string[]; newOffset: number } => {
 				if (!existsSync(path)) return { lines: [], newOffset: lastOffset }
 				const content = readFileSync(path)
 				const chunk = content.subarray(lastOffset)
@@ -90,9 +87,7 @@ export class ReviewWatcher extends Context.Service<
 				)
 			}
 
-			const finalSweep = (
-				params: WatchParams & { readonly lastOffset: number },
-			): Effect.Effect<number> =>
+			const finalSweep = (params: WatchParams & { readonly lastOffset: number }): Effect.Effect<number> =>
 				Effect.gen(function* () {
 					const findingsPath = `${params.reviewDir}/findings.jsonl`
 					const { lines, newOffset } = readNewLines(findingsPath, params.lastOffset)

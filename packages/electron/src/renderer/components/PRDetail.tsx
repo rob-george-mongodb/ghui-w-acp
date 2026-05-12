@@ -10,7 +10,11 @@ interface PRDetailProps {
 }
 
 export const PRDetail = ({ repo, number }: PRDetailProps) => {
-	const { data: pr, isLoading, error } = useQuery({
+	const {
+		data: pr,
+		isLoading,
+		error,
+	} = useQuery({
 		queryKey: ["pr:details", repo, number],
 		queryFn: () => coreBridge.getPullRequestDetails(repo, number),
 	})
@@ -56,17 +60,23 @@ export const PRDetail = ({ repo, number }: PRDetailProps) => {
 							<div className="pr-detail-section-title">Assignees</div>
 							<div className="people-list">
 								{pr.assignees.map((a) => (
-									<span key={a.login} className="person-chip">{a.login}</span>
+									<span key={a.login} className="person-chip">
+										{a.login}
+									</span>
 								))}
 							</div>
 						</>
 					)}
 					{pr.reviewRequests.length > 0 && (
 						<>
-							<div className="pr-detail-section-title" style={{ marginTop: pr.assignees.length > 0 ? 12 : 0 }}>Reviewers</div>
+							<div className="pr-detail-section-title" style={{ marginTop: pr.assignees.length > 0 ? 12 : 0 }}>
+								Reviewers
+							</div>
 							<div className="people-list">
 								{pr.reviewRequests.map((r) => (
-									<span key={r.name} className="person-chip">{r.name}</span>
+									<span key={r.name} className="person-chip">
+										{r.name}
+									</span>
 								))}
 							</div>
 						</>

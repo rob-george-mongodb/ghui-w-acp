@@ -105,7 +105,8 @@ const modalActive = (a: AppCtx): boolean =>
 	!!a.humanCommentModalActive ||
 	!!a.postFindingsModalActive
 
-const inListMode = (a: AppCtx): boolean => !modalActive(a) && !a.filterMode && !a.diffFullView && !a.detailFullView && !a.commentsViewActive && !a.findingsPanelActive && !a.askAIPanelActive && !a.sessionViewerPanelActive
+const inListMode = (a: AppCtx): boolean =>
+	!modalActive(a) && !a.filterMode && !a.diffFullView && !a.detailFullView && !a.commentsViewActive && !a.findingsPanelActive && !a.askAIPanelActive && !a.sessionViewerPanelActive
 
 export const appKeymap = App(
 	// Always-on: command palette opener

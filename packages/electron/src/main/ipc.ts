@@ -1,14 +1,6 @@
 import { ipcMain } from "electron"
 import { Effect, ManagedRuntime } from "effect"
-import {
-	BrowserOpener,
-	CacheService,
-	Clipboard,
-	CommandRunner,
-	GitHubService,
-	type AppConfig,
-	AppConfigService,
-} from "@ghui/core/node"
+import { BrowserOpener, CacheService, Clipboard, CommandRunner, GitHubService, type AppConfig, AppConfigService } from "@ghui/core/node"
 import type { PullRequestView } from "@ghui/core/node"
 import type { IpcChannel, IpcChannels, IpcError, IpcResult } from "../shared/ipcProtocol.js"
 import { makeElectronCoreLayer } from "./coreLayer.js"
@@ -43,7 +35,7 @@ export const setupIpcHandlers = (appConfig: AppConfig) => {
 	handle("pr:list", (view: PullRequestView, cursor?: string | null, pageSize?: number) =>
 		Effect.gen(function* () {
 			const github = yield* GitHubService
-			const mode = view._tag === "Repository" ? "repository" as const : view.mode
+			const mode = view._tag === "Repository" ? ("repository" as const) : view.mode
 			const repo = view.repository
 			return yield* github.listOpenPullRequestPage({ mode, repository: repo, cursor: cursor ?? null, pageSize: pageSize ?? 50 })
 		}),

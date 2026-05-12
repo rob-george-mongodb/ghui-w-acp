@@ -76,11 +76,7 @@ export class ACPService extends Context.Service<
 				return agents.find((a) => a.name === defaultName) ?? agents[0] ?? { name: "opencode", command: ["opencode", "acp"] }
 			}
 
-			const createSession = (
-				pr: PullRequestItem,
-				worktreePath: string,
-				sessionType: "review" | "chat",
-			): Effect.Effect<ReviewSession, ACPError> =>
+			const createSession = (pr: PullRequestItem, worktreePath: string, sessionType: "review" | "chat"): Effect.Effect<ReviewSession, ACPError> =>
 				Effect.gen(function* () {
 					const agentConfig = getAgentConfig()
 					const pk = `${pr.repository}#${pr.number}`
@@ -173,9 +169,9 @@ export class ACPService extends Context.Service<
 						sessionType,
 						agentName: agentConfig.name,
 						accumulator,
-					watcherFiber: null,
-					lastWatcherOffset: 0,
-					lastStopReason: null,
+						watcherFiber: null,
+						lastWatcherOffset: 0,
+						lastStopReason: null,
 					})
 
 					return session
@@ -224,12 +220,16 @@ export class ACPService extends Context.Service<
 						Effect.ensuring(
 							Fiber.interrupt(watcherFiber).pipe(
 								Effect.ignore,
-								Effect.tap(() => Effect.sync(() => { handle.watcherFiber = null })),
+								Effect.tap(() =>
+									Effect.sync(() => {
+										handle.watcherFiber = null
+									}),
+								),
 							),
 						),
 					)
 
-				handle.lastWatcherOffset = yield* watcher.finalSweep({
+					handle.lastWatcherOffset = yield* watcher.finalSweep({
 						reviewDir: handle.reviewDir,
 						prKey: handle.prKey,
 						sessionId,
@@ -249,7 +249,7 @@ export class ACPService extends Context.Service<
 
 					handle.lastStopReason = result.stopReason
 
-				return { stopReason: result.stopReason }
+					return { stopReason: result.stopReason }
 				})
 
 			const cancelSession = (sessionId: string): Effect.Effect<void, never> =>

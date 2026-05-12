@@ -700,12 +700,25 @@ const liveCacheService = (sql: SqlClient.SqlClient) => {
 	})
 
 	return {
-		readQueue, writeQueue, readPullRequest, upsertPullRequest, prune,
-		upsertWorktree, listWorktrees, deleteWorktree,
-		upsertSession, endSession, listSessions,
-		appendMessage, listMessages,
-		upsertReport, getReport,
-		upsertFinding, listFindings, updateFindingStatus, markFindingPosted,
+		readQueue,
+		writeQueue,
+		readPullRequest,
+		upsertPullRequest,
+		prune,
+		upsertWorktree,
+		listWorktrees,
+		deleteWorktree,
+		upsertSession,
+		endSession,
+		listSessions,
+		appendMessage,
+		listMessages,
+		upsertReport,
+		getReport,
+		upsertFinding,
+		listFindings,
+		updateFindingStatus,
+		markFindingPosted,
 	}
 }
 

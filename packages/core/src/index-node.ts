@@ -1,5 +1,6 @@
 export * from "./theme.js"
 export * from "./themeConfig.js"
+export * from "./systemAppearance.js"
 export * from "./diff.js"
 export * from "./search.js"
 export * from "./appCommands.js"

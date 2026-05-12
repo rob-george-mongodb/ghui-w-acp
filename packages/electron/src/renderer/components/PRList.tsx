@@ -28,10 +28,7 @@ export const PRList = ({ activeView, selectedPR, onSelectPR, onViewChange }: PRL
 		if (!data) return groups
 		const items = filter
 			? data.items.filter(
-					(pr) =>
-						pr.title.toLowerCase().includes(filter.toLowerCase()) ||
-						pr.author.toLowerCase().includes(filter.toLowerCase()) ||
-						String(pr.number).includes(filter),
+					(pr) => pr.title.toLowerCase().includes(filter.toLowerCase()) || pr.author.toLowerCase().includes(filter.toLowerCase()) || String(pr.number).includes(filter),
 				)
 			: data.items
 
@@ -52,29 +49,23 @@ export const PRList = ({ activeView, selectedPR, onSelectPR, onViewChange }: PRL
 	return (
 		<div className="pr-list-pane">
 			<div className="pr-list-tabs">
-				{pullRequestQueueModes.filter((m) => m !== "inbox").map((mode) => (
-					<button
-						key={mode}
-						className={`pr-list-tab ${currentMode === mode ? "active" : ""}`}
-						onClick={() => onViewChange({ _tag: "Queue", mode, repository: currentRepo })}
-					>
-						{pullRequestQueueLabels[mode]}
-					</button>
-				))}
+				{pullRequestQueueModes
+					.filter((m) => m !== "inbox")
+					.map((mode) => (
+						<button key={mode} className={`pr-list-tab ${currentMode === mode ? "active" : ""}`} onClick={() => onViewChange({ _tag: "Queue", mode, repository: currentRepo })}>
+							{pullRequestQueueLabels[mode]}
+						</button>
+					))}
 			</div>
 			<div className="pr-list-toolbar">
 				<SearchBar value={filter} onChange={setFilter} />
-				<button onClick={() => queryClient.invalidateQueries({ queryKey: ["pr:list"] })}>
-					↻
-				</button>
+				<button onClick={() => queryClient.invalidateQueries({ queryKey: ["pr:list"] })}>↻</button>
 			</div>
 			<RepoSelector onViewChange={onViewChange} />
 			<div className="pr-list-items">
 				{isLoading && <div className="loading-message">Loading…</div>}
 				{error && <div className="error-message">Failed to load: {String(error)}</div>}
-				{!isLoading && !error && data?.items.length === 0 && (
-					<div className="loading-message">No pull requests</div>
-				)}
+				{!isLoading && !error && data?.items.length === 0 && <div className="loading-message">No pull requests</div>}
 				{[...grouped.entries()].map(([repo, prs]) => (
 					<div key={repo}>
 						<div className="pr-list-group-header">{repo}</div>

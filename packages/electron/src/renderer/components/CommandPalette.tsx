@@ -8,8 +8,7 @@ interface CommandPaletteProps {
 }
 
 const DIFF_SCOPE_IDS = new Set(["diff", "file", "thread"])
-const shouldExclude = (cmd: AppCommand) =>
-	cmd.id.split(".").some((segment) => DIFF_SCOPE_IDS.has(segment))
+const shouldExclude = (cmd: AppCommand) => cmd.id.split(".").some((segment) => DIFF_SCOPE_IDS.has(segment))
 
 export const CommandPalette = ({ commands, onExecute, onClose }: CommandPaletteProps) => {
 	const [query, setQuery] = useState("")
@@ -33,41 +32,35 @@ export const CommandPalette = ({ commands, onExecute, onClose }: CommandPaletteP
 		el?.scrollIntoView({ block: "nearest" })
 	}, [selectedIndex])
 
-	const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-		if (e.key === "Escape") {
-			e.preventDefault()
-			onClose()
-		} else if (e.key === "ArrowDown") {
-			e.preventDefault()
-			setSelectedIndex((i) => clampCommandIndex(i + 1, filtered))
-		} else if (e.key === "ArrowUp") {
-			e.preventDefault()
-			setSelectedIndex((i) => clampCommandIndex(i - 1, filtered))
-		} else if (e.key === "Enter") {
-			e.preventDefault()
-			const cmd = filtered[selectedIndex]
-			if (cmd && !cmd.disabledReason) {
-				onExecute(cmd)
+	const handleKeyDown = useCallback(
+		(e: React.KeyboardEvent) => {
+			if (e.key === "Escape") {
+				e.preventDefault()
 				onClose()
+			} else if (e.key === "ArrowDown") {
+				e.preventDefault()
+				setSelectedIndex((i) => clampCommandIndex(i + 1, filtered))
+			} else if (e.key === "ArrowUp") {
+				e.preventDefault()
+				setSelectedIndex((i) => clampCommandIndex(i - 1, filtered))
+			} else if (e.key === "Enter") {
+				e.preventDefault()
+				const cmd = filtered[selectedIndex]
+				if (cmd && !cmd.disabledReason) {
+					onExecute(cmd)
+					onClose()
+				}
 			}
-		}
-	}, [filtered, selectedIndex, onClose, onExecute])
+		},
+		[filtered, selectedIndex, onClose, onExecute],
+	)
 
 	return (
 		<div className="command-palette-overlay" onClick={onClose}>
 			<div className="command-palette" onClick={(e) => e.stopPropagation()} onKeyDown={handleKeyDown}>
-				<input
-					ref={inputRef}
-					className="command-palette-input"
-					type="text"
-					placeholder="Type a command…"
-					value={query}
-					onChange={(e) => setQuery(e.target.value)}
-				/>
+				<input ref={inputRef} className="command-palette-input" type="text" placeholder="Type a command…" value={query} onChange={(e) => setQuery(e.target.value)} />
 				<div className="command-palette-list" ref={listRef}>
-					{filtered.length === 0 && (
-						<div className="command-palette-empty">No matching commands</div>
-					)}
+					{filtered.length === 0 && <div className="command-palette-empty">No matching commands</div>}
 					{filtered.map((cmd, i) => (
 						<div
 							key={cmd.id}

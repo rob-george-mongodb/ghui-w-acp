@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile, appendFile, mkdir } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Effect } from "effect"
-import { CacheService, ReviewWatcher } from "@ghui/core"
+import { CacheService, ReviewWatcher, BunCacheService } from "@ghui/core/node"
 
 const tempDirs: string[] = []
 
@@ -27,7 +27,7 @@ const runWatcher = async <A, E>(filename: string, effect: Effect.Effect<A, E, Re
 	Effect.runPromise(
 		effect.pipe(
 			Effect.provide(ReviewWatcher.layer),
-			Effect.provide(CacheService.layerSqliteFile(filename)),
+			Effect.provide(BunCacheService.layerSqliteFile(filename)),
 		),
 	)
 

@@ -4,10 +4,7 @@ import { resolve } from "node:path"
 import { Database } from "bun:sqlite"
 import { Server } from "@modelcontextprotocol/sdk/server/index.js"
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
-import {
-	CallToolRequestSchema,
-	ListToolsRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js"
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js"
 
 const REVIEW_DIR = process.env.GHUI_REVIEW_DIR
 const PR_KEY = process.env.GHUI_PR_KEY
@@ -51,24 +48,17 @@ const tools = [
 	},
 	{
 		name: "submit_pr_report",
-		description:
-			"Submit a full PR review report with an overall verdict. Write your report to a Markdown file first, then call this tool with the file path.",
+		description: "Submit a full PR review report with an overall verdict. Write your report to a Markdown file first, then call this tool with the file path.",
 		inputSchema: {
 			type: "object" as const,
 			properties: {
 				report_path: {
 					type: "string",
-					description:
-						"Path to the Markdown report file you have written, relative to your working directory.",
+					description: "Path to the Markdown report file you have written, relative to your working directory.",
 				},
 				verdict: {
 					type: "string",
-					enum: [
-						"indeterminate_human_review_required",
-						"good_for_merge",
-						"block_merge",
-						"minor_issues",
-					],
+					enum: ["indeterminate_human_review_required", "good_for_merge", "block_merge", "minor_issues"],
 					description: "Overall assessment of the PR.",
 				},
 			},
@@ -85,10 +75,7 @@ export const runMcpServer = async () => {
 
 	mkdirSync(REVIEW_DIR, { recursive: true })
 
-	const server = new Server(
-		{ name: "ghui-review", version: "1.0.0" },
-		{ capabilities: { tools: {} } },
-	)
+	const server = new Server({ name: "ghui-review", version: "1.0.0" }, { capabilities: { tools: {} } })
 
 	server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }))
 

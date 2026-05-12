@@ -2,22 +2,8 @@ import { TextAttributes } from "@opentui/core"
 import type { ReviewFinding, ReviewSession, SessionMessage } from "@ghui/core"
 import { clampCursor, commentEditorLines, cursorLineIndexForLines } from "./commentEditor.js"
 import { colors } from "./colors.js"
-import {
-	centerCell,
-	Filler,
-	fitCell,
-	HintRow,
-	PlainLine,
-	standardModalDims,
-	StandardModal,
-	TextLine,
-} from "./primitives.js"
-import type {
-	FindingEditModalState,
-	HumanCommentModalState,
-	InitiateReviewModalState,
-	PostFindingsModalState,
-} from "./modals.js"
+import { centerCell, Filler, fitCell, HintRow, PlainLine, standardModalDims, StandardModal, TextLine } from "./primitives.js"
+import type { FindingEditModalState, HumanCommentModalState, InitiateReviewModalState, PostFindingsModalState } from "./modals.js"
 import { shortRepoName } from "./pullRequests.js"
 
 export const InitiateReviewModal = ({

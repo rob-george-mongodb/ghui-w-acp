@@ -28,15 +28,17 @@ export const SearchBar = ({ value, onChange }: SearchBarProps) => {
 	return (
 		<div className="search-bar">
 			<span className="search-bar-icon">⌕</span>
-			<input
-				className="search-bar-input"
-				type="text"
-				placeholder="Filter pull requests…"
-				value={local}
-				onChange={(e) => handleChange(e.target.value)}
-			/>
+			<input className="search-bar-input" type="text" placeholder="Filter pull requests…" value={local} onChange={(e) => handleChange(e.target.value)} />
 			{local && (
-				<button className="search-bar-clear btn-sm btn-ghost" onClick={() => { setLocal(""); onChange("") }}>✕</button>
+				<button
+					className="search-bar-clear btn-sm btn-ghost"
+					onClick={() => {
+						setLocal("")
+						onChange("")
+					}}
+				>
+					✕
+				</button>
 			)}
 		</div>
 	)

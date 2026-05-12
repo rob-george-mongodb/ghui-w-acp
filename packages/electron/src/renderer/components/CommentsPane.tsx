@@ -71,14 +71,14 @@ export const CommentsPane = ({ repo, number, onClose }: CommentsPaneProps) => {
 		<div className="comments-pane-inner">
 			<div className="comments-pane-header">
 				<span className="comments-pane-title">Comments</span>
-				<button className="btn-sm btn-ghost" onClick={onClose}>✕</button>
+				<button className="btn-sm btn-ghost" onClick={onClose}>
+					✕
+				</button>
 			</div>
 
 			{isLoading && <div className="loading-message">Loading comments…</div>}
 
-			{!isLoading && threads.length === 0 && (
-				<div className="loading-message">No comments yet</div>
-			)}
+			{!isLoading && threads.length === 0 && <div className="loading-message">No comments yet</div>}
 
 			<div className="comments-pane-list">
 				{threads.map((thread) => (

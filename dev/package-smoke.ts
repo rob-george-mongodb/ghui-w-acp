@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 import { Effect } from "effect"
-import { BunCacheService, CacheService } from "@ghui/core"
+import { BunCacheService, CacheService } from "@ghui/core/node"
 import { binaryPackageName as binaryPackageNameForTarget, currentReleaseTargetId, findReleaseTarget } from "./release-targets.js"
 
 type CommandResult = {

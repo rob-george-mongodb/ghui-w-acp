@@ -13,8 +13,7 @@ export class WorktreeError extends Schema.TaggedErrorClass<WorktreeError>()("Wor
 	message: Schema.String,
 }) {}
 
-const defaultWorktreeRoot = () =>
-	join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "ghui", "worktrees")
+const defaultWorktreeRoot = () => join(process.env.XDG_DATA_HOME ?? join(homedir(), ".local", "share"), "ghui", "worktrees")
 
 export class WorktreeService extends Context.Service<
 	WorktreeService,
@@ -56,11 +55,7 @@ export class WorktreeService extends Context.Service<
 
 					yield* runner
 						.run("git", ["-C", repoPath, "worktree", "add", worktreePath, pr.headRefName])
-						.pipe(
-							Effect.mapError(
-								(e) => new WorktreeError({ prKey, cause: e, message: `Failed to create worktree: ${e.detail}` }),
-							),
-						)
+						.pipe(Effect.mapError((e) => new WorktreeError({ prKey, cause: e, message: `Failed to create worktree: ${e.detail}` })))
 
 					yield* Effect.tryPromise({
 						try: () => mkdir(join(worktreePath, ".ghui-review"), { recursive: true }),
@@ -80,42 +75,26 @@ export class WorktreeService extends Context.Service<
 
 			const remove = (prKey: string): Effect.Effect<void, WorktreeError> =>
 				Effect.gen(function* () {
-					const worktrees = yield* cache
-						.listWorktrees()
-						.pipe(
-							Effect.mapError(
-								(cause) => new WorktreeError({ prKey, cause, message: "Failed to list worktrees" }),
-							),
-						)
+					const worktrees = yield* cache.listWorktrees().pipe(Effect.mapError((cause) => new WorktreeError({ prKey, cause, message: "Failed to list worktrees" })))
 					const entry = worktrees.find((w) => w.prKey === prKey)
 					if (!entry) return
 
-				const repository = prKey.split("#")[0] ?? ""
-				const repoPath = config.jsonConfig.repoMappings?.[repository]
-				if (repoPath) {
-					yield* runner.run("git", ["-C", repoPath, "worktree", "remove", "--force", entry.worktreePath]).pipe(Effect.ignore)
-				}
-				yield* cache.deleteWorktree(prKey)
+					const repository = prKey.split("#")[0] ?? ""
+					const repoPath = config.jsonConfig.repoMappings?.[repository]
+					if (repoPath) {
+						yield* runner.run("git", ["-C", repoPath, "worktree", "remove", "--force", entry.worktreePath]).pipe(Effect.ignore)
+					}
+					yield* cache.deleteWorktree(prKey)
 				})
 
 			const list = (): Effect.Effect<readonly ReviewWorktree[], WorktreeError> =>
-				cache
-					.listWorktrees()
-					.pipe(
-						Effect.mapError(
-							(cause) => new WorktreeError({ prKey: "", cause, message: "Failed to list worktrees" }),
-						),
-					)
+				cache.listWorktrees().pipe(Effect.mapError((cause) => new WorktreeError({ prKey: "", cause, message: "Failed to list worktrees" })))
 
 			const getWorktreePath = (prKey: string): Effect.Effect<string | null, WorktreeError> =>
-				cache
-					.listWorktrees()
-					.pipe(
-						Effect.map((worktrees) => worktrees.find((w) => w.prKey === prKey)?.worktreePath ?? null),
-						Effect.mapError(
-							(cause) => new WorktreeError({ prKey, cause, message: "Failed to get worktree path" }),
-						),
-					)
+				cache.listWorktrees().pipe(
+					Effect.map((worktrees) => worktrees.find((w) => w.prKey === prKey)?.worktreePath ?? null),
+					Effect.mapError((cause) => new WorktreeError({ prKey, cause, message: "Failed to get worktree path" })),
+				)
 
 			return WorktreeService.of({ create, remove, list, getWorktreePath })
 		}),

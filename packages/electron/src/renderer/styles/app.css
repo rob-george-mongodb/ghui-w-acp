@@ -151,14 +151,28 @@
 }
 
 /* State icons */
-.state-open { color: var(--accent-green); }
-.state-closed { color: var(--accent-red); }
-.state-merged { color: var(--accent-purple); }
+.state-open {
+	color: var(--accent-green);
+}
+.state-closed {
+	color: var(--accent-red);
+}
+.state-merged {
+	color: var(--accent-purple);
+}
 
-.check-passing { color: var(--accent-green); }
-.check-pending { color: var(--accent-yellow); }
-.check-failing { color: var(--accent-red); }
-.check-none { color: var(--text-secondary); }
+.check-passing {
+	color: var(--accent-green);
+}
+.check-pending {
+	color: var(--accent-yellow);
+}
+.check-failing {
+	color: var(--accent-red);
+}
+.check-none {
+	color: var(--text-secondary);
+}
 
 /* PR Detail */
 

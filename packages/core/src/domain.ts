@@ -198,12 +198,7 @@ export type FindingStatus = (typeof findingStatuses)[number]
 export const findingSources = ["ai", "human"] as const
 export type FindingSource = (typeof findingSources)[number]
 
-export const reviewVerdicts = [
-	"indeterminate_human_review_required",
-	"good_for_merge",
-	"block_merge",
-	"minor_issues",
-] as const
+export const reviewVerdicts = ["indeterminate_human_review_required", "good_for_merge", "block_merge", "minor_issues"] as const
 export type ReviewVerdict = (typeof reviewVerdicts)[number]
 
 export const reviewSessionTypes = ["review", "chat"] as const

@@ -33,8 +33,7 @@ export interface GhuiJsonConfig {
 	readonly worktreeRoot?: string
 }
 
-const defaultConfigFilePath = () =>
-	join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "ghui", "ghui.json")
+const defaultConfigFilePath = () => join(process.env.XDG_CONFIG_HOME ?? join(homedir(), ".config"), "ghui", "ghui.json")
 
 const loadJsonConfig = (): GhuiJsonConfig => {
 	const configPath = defaultConfigFilePath()

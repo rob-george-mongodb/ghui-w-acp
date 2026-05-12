@@ -82,7 +82,7 @@ import {
 	INBOX_SECTIONS,
 	INBOX_SECTION_ORDER,
 	classifyInboxSection,
-} from "@ghui/core"
+} from "@ghui/core/node"
 import { colors, filterThemeDefinitions, mixHex, pairedThemeId, setActiveTheme, themeDefinitions, themeToneForThemeId, type ThemeId, type ThemeTone } from "./ui/colors.js"
 import {
 	backspace as editorBackspace,

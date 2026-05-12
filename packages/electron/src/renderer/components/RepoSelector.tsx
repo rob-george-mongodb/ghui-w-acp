@@ -29,9 +29,14 @@ export const RepoSelector = ({ onViewChange }: RepoSelectorProps) => {
 				type="text"
 				placeholder="owner/repo or GitHub URL"
 				value={input}
-				onChange={(e) => { setInput(e.target.value); setError(null) }}
+				onChange={(e) => {
+					setInput(e.target.value)
+					setError(null)
+				}}
 			/>
-			<button className="btn btn-primary btn-sm" type="submit" disabled={!input.trim()}>Go</button>
+			<button className="btn btn-primary btn-sm" type="submit" disabled={!input.trim()}>
+				Go
+			</button>
 			{error && <div className="repo-selector-error">{error}</div>}
 		</form>
 	)

@@ -1,13 +1,6 @@
 import { useState } from "react"
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
-import {
-	allowedMergeMethodList,
-	availableMergeKinds,
-	requiresMarkReady,
-	mergeKindRowTitle,
-	type PullRequestMergeMethod,
-	type PullRequestMergeAction,
-} from "@ghui/core"
+import { allowedMergeMethodList, availableMergeKinds, requiresMarkReady, mergeKindRowTitle, type PullRequestMergeMethod, type PullRequestMergeAction } from "@ghui/core"
 import { coreBridge } from "../hooks/useCoreBridge.js"
 
 interface MergeControlsProps {
@@ -68,54 +61,38 @@ export const MergeControls = ({ repo, number }: MergeControlsProps) => {
 			</div>
 
 			{mergeInfo.isDraft && (
-				<button
-					className="btn btn-secondary merge-ready-btn"
-					disabled={toggleDraft.isPending}
-					onClick={() => toggleDraft.mutate(false)}
-				>
+				<button className="btn btn-secondary merge-ready-btn" disabled={toggleDraft.isPending} onClick={() => toggleDraft.mutate(false)}>
 					{toggleDraft.isPending ? "Marking ready…" : "Mark as ready for review"}
 				</button>
 			)}
 
 			{allowedMethods.length > 1 && (
-				<select
-					className="merge-method-select"
-					value={effectiveMethod}
-					onChange={(e) => setSelectedMethod(e.target.value as PullRequestMergeMethod)}
-				>
+				<select className="merge-method-select" value={effectiveMethod} onChange={(e) => setSelectedMethod(e.target.value as PullRequestMergeMethod)}>
 					{allowedMethods.map((m) => (
-						<option key={m} value={m}>{m}</option>
+						<option key={m} value={m}>
+							{m}
+						</option>
 					))}
 				</select>
 			)}
 
 			<div className="merge-actions">
-				{effectiveMethod && kinds.map((kind) => {
-					const fromDraft = requiresMarkReady(mergeInfo, kind)
-					const label = mergeKindRowTitle(kind, effectiveMethod, fromDraft)
-					const disabled = merge.isPending || mergeInfo.mergeable === "conflicting"
-					const action: PullRequestMergeAction = kind.kind === "disable-auto"
-						? { kind: "disable-auto" }
-						: { kind: kind.kind, method: effectiveMethod }
+				{effectiveMethod &&
+					kinds.map((kind) => {
+						const fromDraft = requiresMarkReady(mergeInfo, kind)
+						const label = mergeKindRowTitle(kind, effectiveMethod, fromDraft)
+						const disabled = merge.isPending || mergeInfo.mergeable === "conflicting"
+						const action: PullRequestMergeAction = kind.kind === "disable-auto" ? { kind: "disable-auto" } : { kind: kind.kind, method: effectiveMethod }
 
-					return (
-						<button
-							key={kind.kind}
-							className={`btn ${kind.danger ? "btn-danger" : "btn-primary"}`}
-							disabled={disabled}
-							onClick={() => merge.mutate(action)}
-						>
-							{merge.isPending ? "Merging…" : label}
-						</button>
-					)
-				})}
+						return (
+							<button key={kind.kind} className={`btn ${kind.danger ? "btn-danger" : "btn-primary"}`} disabled={disabled} onClick={() => merge.mutate(action)}>
+								{merge.isPending ? "Merging…" : label}
+							</button>
+						)
+					})}
 			</div>
 
-			<button
-				className="btn btn-ghost merge-close-btn"
-				disabled={closePR.isPending}
-				onClick={() => closePR.mutate()}
-			>
+			<button className="btn btn-ghost merge-close-btn" disabled={closePR.isPending} onClick={() => closePR.mutate()}>
 				{closePR.isPending ? "Closing…" : "Close pull request"}
 			</button>
 		</div>

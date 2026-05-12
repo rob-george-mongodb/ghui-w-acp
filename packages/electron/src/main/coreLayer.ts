@@ -1,13 +1,5 @@
 import { Layer } from "effect"
-import {
-	type AppConfig,
-	AppConfigService,
-	BrowserOpener,
-	CacheService,
-	Clipboard,
-	GitHubService,
-	Observability,
-} from "@ghui/core/node"
+import { type AppConfig, AppConfigService, BrowserOpener, CacheService, Clipboard, GitHubService, Observability } from "@ghui/core/node"
 import { NodeCommandRunner } from "./nodeCommandRunner.js"
 
 export const makeElectronCoreLayer = (options: { appConfig: AppConfig }) => {

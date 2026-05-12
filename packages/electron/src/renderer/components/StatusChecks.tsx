@@ -3,22 +3,31 @@ import type { CheckItem } from "@ghui/core"
 const statusIcon = (check: CheckItem): string => {
 	if (check.status !== "completed") return "◯"
 	switch (check.conclusion) {
-		case "success": return "✓"
-		case "failure": return "✗"
+		case "success":
+			return "✓"
+		case "failure":
+			return "✗"
 		case "neutral":
-		case "skipped": return "–"
-		case "cancelled": return "⊘"
-		case "timed_out": return "⏱"
-		default: return "?"
+		case "skipped":
+			return "–"
+		case "cancelled":
+			return "⊘"
+		case "timed_out":
+			return "⏱"
+		default:
+			return "?"
 	}
 }
 
 const statusClass = (check: CheckItem): string => {
 	if (check.status !== "completed") return "check-pending"
 	switch (check.conclusion) {
-		case "success": return "check-passing"
-		case "failure": return "check-failing"
-		default: return "check-none"
+		case "success":
+			return "check-passing"
+		case "failure":
+			return "check-failing"
+		default:
+			return "check-none"
 	}
 }
 

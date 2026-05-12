@@ -39,34 +39,13 @@ export const App = () => {
 	return (
 		<ErrorBoundary>
 			<div className={`app-layout ${commentsPaneVisible ? "comments-visible" : ""}`}>
-				<PRList
-					activeView={activeView}
-					selectedPR={selectedPR}
-					onSelectPR={setSelectedPR}
-					onViewChange={setActiveView}
-				/>
+				<PRList activeView={activeView} selectedPR={selectedPR} onSelectPR={setSelectedPR} onViewChange={setActiveView} />
 				<div className="pr-detail-pane">
-					{selectedPR ? (
-						<PRDetail repo={selectedPR.repo} number={selectedPR.number} />
-					) : (
-						<div className="pr-detail-empty">Select a pull request</div>
-					)}
+					{selectedPR ? <PRDetail repo={selectedPR.repo} number={selectedPR.number} /> : <div className="pr-detail-empty">Select a pull request</div>}
 				</div>
-				{commentsPaneVisible && selectedPR && (
-					<CommentsPane
-						repo={selectedPR.repo}
-						number={selectedPR.number}
-						onClose={() => setCommentsPaneVisible(false)}
-					/>
-				)}
+				{commentsPaneVisible && selectedPR && <CommentsPane repo={selectedPR.repo} number={selectedPR.number} onClose={() => setCommentsPaneVisible(false)} />}
 			</div>
-			{commandPaletteOpen && (
-				<CommandPalette
-					commands={paletteCommands}
-					onExecute={(cmd) => cmd.run()}
-					onClose={() => setCommandPaletteOpen(false)}
-				/>
-			)}
+			{commandPaletteOpen && <CommandPalette commands={paletteCommands} onExecute={(cmd) => cmd.run()} onClose={() => setCommandPaletteOpen(false)} />}
 		</ErrorBoundary>
 	)
 }
