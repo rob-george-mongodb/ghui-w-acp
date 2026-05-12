@@ -1,6 +1,6 @@
 # Plan: Extract ACP to a standalone `@ghui/acp` package
 
-**Status**: Draft — awaiting human signoff  
+**Status**: Revised draft — awaiting human signoff  
 **Branch**: `adhoc-plan/acp-extract-module-1`  
 **Research files**: `_findings/codebase-research-*.md` (existing corpus)
 
@@ -33,18 +33,24 @@ The goal is to extract every ACP-specific concern into a new workspace package (
 
 | File | Note |
 |------|------|
-| `packages/core/src/services/CacheService.ts` (PR tables) | `pull_requests`, `queue_snapshots` — untouched |
-| `packages/core/src/services/WorktreeService.ts` | Git worktree management. Depends on `CommandRunner` + `AppConfigService`; no ACP protocol dependency. Stays in `@ghui/core`. |
+| `packages/core/src/services/CacheService.ts` (PR + worktree tables) | `pull_requests`, `queue_snapshots`, and `review_worktrees` (+ `upsertWorktree` / `listWorktrees` / `deleteWorktree`) stay here. See below for the precise split rationale. |
+| `packages/core/src/services/WorktreeService.ts` | Git worktree management. Depends on `CacheService` (for worktree records), `CommandRunner`, and `AppConfigService`. No ACP protocol dependency. Stays in `@ghui/core`. |
 | `packages/core/src/config.ts` | `AppConfigService` / `GhuiJsonConfig` including `acp.agents` section. ACP module receives a simplified config struct (see below); no direct dependency on `AppConfigService`. |
-| `src/App.tsx`, `src/ui/acpModals.tsx` | UI layer. Imports change from `@ghui/core` → `@ghui/acp`. |
+| `src/App.tsx`, `src/ui/acpModals.tsx` | UI layer. Imports change from `@ghui/core` → `@ghui/acp` for session/finding/message/report types and operations. |
 
 ### Current coupling that the extraction must break
 
 `ACPService` currently depends on `AppConfigService` to read `config.jsonConfig.acp`. After extraction, the ACP module must receive agent configuration as a plain value, so consumers are not forced to adopt `AppConfigService`.
 
-`ACPService` takes `PullRequestItem` as argument to `startReviewSession` / `startChatSession`, but only uses `pr.repository` and `pr.number` to compute the `prKey`. The extracted module will accept a minimal `ACPPrRef` type instead. `PullRequestItem` satisfies this interface structurally, so no call-site changes are required.
+`ACPService` takes `PullRequestItem` as argument to `startReviewSession` / `startChatSession`, but only uses `pr.repository` and `pr.number` to compute the `prKey` (line 82: `` `${pr.repository}#${pr.number}` ``). The extracted module will accept a minimal `ACPPrRef` type instead. `PullRequestItem` satisfies this interface structurally, so no call-site changes are required.
 
 The MCP server currently reads `GHUI_CACHE_PATH` to find the SQLite db. After extraction it reads `GHUI_ACP_STORE_PATH`. `ACPService.createSession` currently passes `GHUI_CACHE_PATH` to the spawned MCP server; after extraction it will pass `GHUI_ACP_STORE_PATH` pointing at the ACP-module's own database.
+
+#### Precise CacheService split
+
+`WorktreeService` (staying in `@ghui/core`) calls `cache.upsertWorktree`, `cache.deleteWorktree`, and `cache.listWorktrees`. These are ACP-adjacent (worktrees are prerequisites for ACP sessions) but are _git state_, not _ACP protocol state_. The `review_worktrees` table and its three CRUD methods therefore **stay in `CacheService`** alongside the PR tables. This keeps `WorktreeService` free of any dependency on `@ghui/acp`.
+
+`ACPStore` (new, in `@ghui/acp`) owns the four tables that are purely session/conversation/analysis state: `review_sessions`, `session_messages`, `review_reports`, `review_findings`.
 
 ---
 
@@ -93,16 +99,14 @@ No dependency on `@ghui/core`.
 
 ---
 
-### 2. `ACPStore` service (new, replaces ACP half of `CacheService`)
+### 2. `ACPStore` service (new, replaces ACP session/finding half of `CacheService`)
 
 Lives at `packages/acp/src/services/ACPStore.ts`.
 
+Owns only the four session/conversation/analysis tables. Worktree table stays in `CacheService`.
+
 ```typescript
 export class ACPStore extends Context.Service<ACPStore, {
-  // worktrees
-  upsertWorktree(entry: ReviewWorktree): Effect<void>
-  listWorktrees(): Effect<readonly ReviewWorktree[]>
-  deleteWorktree(prKey: string): Effect<void>
   // sessions
   upsertSession(session: ReviewSession): Effect<void>
   endSession(sessionId: string, endedAt: Date, stopReason?: string): Effect<void>
@@ -125,7 +129,9 @@ export class ACPStore extends Context.Service<ACPStore, {
 }
 ```
 
-Schema migrations (currently migration `"002_acp_review"` in `CacheService`) move entirely into `ACPStore`.
+Schema migrations: the four ACP tables from migration `"002_acp_review"` in `CacheService` move here. `CacheService` migration `"002_acp_review"` is replaced with a no-op (to avoid breaking existing DB schemas on install — see Data Migration note in Risks).
+
+The MCP server (`submit_pr_report` tool) opens this database directly via raw `bun:sqlite`. It relies on the parent process having already run `ACPStore` migrations before spawning the MCP subprocess. This is already the implicit contract in the current design (MCP server is launched after the Effect runtime initialises); it becomes explicit documentation.
 
 ---
 
@@ -137,6 +143,7 @@ Primary change: replace the `AppConfigService` dependency with a plain `ACPConfi
 interface ACPAgentConfig {
   readonly name: string
   readonly command: readonly string[]
+  readonly defaultModel?: string    // preserved from existing GhuiJsonConfig.AcpAgentConfig
 }
 
 interface ACPConfig {
@@ -217,12 +224,12 @@ Effect.runPromise(
 
 | File | Change |
 |------|--------|
-| `packages/core/src/services/CacheService.ts` | Remove ACP CRUD methods and migrations (`002_acp_review`). CacheService interface shrinks. |
+| `packages/core/src/services/CacheService.ts` | Remove ACP session/finding CRUD methods and migration `"002_acp_review"` four tables. **Retain** `review_worktrees` + `upsertWorktree` / `listWorktrees` / `deleteWorktree`. Replace migration `"002_acp_review"` with a no-op stub so existing DB schemas don't break. `CacheService.disabledLayer` has its ACP-method stubs removed. |
 | `packages/core/src/services/ACPService.ts` | Delete (moved to `@ghui/acp`) |
 | `packages/core/src/services/ReviewWatcher.ts` | Delete (moved to `@ghui/acp`) |
 | `packages/core/src/domain.ts` | Remove ACP-specific types. Re-export them from `@ghui/acp` for compatibility if needed. |
-| `packages/core/src/index.ts` / `index-node.ts` | Remove ACP exports; add `@ghui/acp` re-exports where currently imported by app code |
-| `packages/core/src/runtime.ts` | Import `makeACPLayer` from `@ghui/acp`; pass `{ storePath: appConfig.acpStorePath, agentConfig: ... }` |
+| `packages/core/src/index.ts` / `index-node.ts` | Remove ACPService/ReviewWatcher exports; add `@ghui/acp` re-exports where currently imported by app code |
+| `packages/core/src/runtime.ts` | Import `makeACPLayer` from `@ghui/acp`; pass `{ storePath: appConfig.acpStorePath, agentConfig: ... }`. Merge the `ACPService` and `ACPStore` layers into the core layer output so `githubRuntime` can resolve both. |
 
 ### 7. Changes to app config (`packages/core/src/config.ts`)
 
@@ -242,8 +249,9 @@ Pass `acpStorePath` and the `acp` section of `jsonConfig` into `makeACPLayer` fr
 ### 8. Changes to `src/App.tsx` and `src/ui/acpModals.tsx`
 
 - Import `ACPService`, `ACPError`, `ReviewFinding`, `ReviewSession`, `SessionMessage`, `ReviewReport`, `ReviewWorktree` from `@ghui/acp` instead of `@ghui/core`.
-- Calls to `CacheService.use(cache => cache.upsertFinding(...))` etc. move to `ACPStore.use(store => store.upsertFinding(...))`.
-- The `cancelSession` / `closeSession` calls currently not wired in App will remain in ACPService's public API but can stay dormant.
+- Calls to `CacheService.use(cache => cache.listFindings(...))`, `cache.listSessions(...)`, `cache.listMessages(...)`, `cache.upsertFinding(...)`, `cache.updateFindingStatus(...)`, `cache.markFindingPosted(...)` move to `ACPStore.use(store => store...)`. Because `ACPStore` is included in the runtime layer (Section 6), `githubRuntime.fn` atoms can resolve it without further changes.
+- The `cancelSession` / `closeSession` calls currently not wired in App will remain in `ACPService`'s public API; no change needed there.
+- Worktree-related atoms (`createWorktreeAtom`, `WorktreeService.use(...)`) are unchanged; they still go through `CacheService` worktree methods.
 
 ### 9. The `standalone.ts` MCP server dispatch
 
@@ -257,6 +265,19 @@ No behavioural change needed; the env var switch (`GHUI_ACP_STORE_PATH`) is hand
 
 ---
 
+## Acceptance Criteria
+
+An implementation is complete when all of the following hold:
+
+1. `packages/acp/package.json` has **zero dependency on `@ghui/core`** (runtime or type).
+2. `@ghui/core` source has **no imports of ACP session/finding/message/report types or services** (`ACPService`, `ReviewWatcher`, `ReviewSession`, `ReviewFinding`, `SessionMessage`, `ReviewReport` — worktree types remain).
+3. `bun run typecheck` across all workspace packages produces zero errors.
+4. `bun run test` passes, including migrated `packages/acp/test/acpStore.test.ts` and `packages/acp/test/reviewWatcher.test.ts`.
+5. `bun run start:mock` renders the application; navigating to the ACP modals does not produce a runtime error.
+6. Running the MCP server subprocess (`bun run src/standalone.ts mcp-server`) with `GHUI_REVIEW_DIR=/tmp/x GHUI_ACP_STORE_PATH=/tmp/acp.sqlite` starts without error and responds to a `list_tools` message.
+
+---
+
 ## Verification Plan
 
 1. **Existing tests pass unchanged**: `bun run test` (covers `cacheService.test.ts`, `reviewWatcher.test.ts`, etc.). The test files themselves move to `packages/acp/test/` and are updated to import from `@ghui/acp`.
@@ -266,13 +287,15 @@ No behavioural change needed; the env var switch (`GHUI_ACP_STORE_PATH`) is hand
    - Verify `ACPStore` is populated after session upsert
    - Verify `makeACPLayer` with `storePath: null` returns disabled (no-op) store
 
-3. **Typecheck**: `bun run typecheck` across all packages must pass with zero errors.
+3. **Concurrent-access smoke test**: Verify that the main process (Effect SQL, WAL mode) and MCP subprocess (raw `bun:sqlite`) can both write to `acp.sqlite` simultaneously without deadlock or corruption. The existing `PRAGMA busy_timeout = 5000` and `PRAGMA journal_mode = WAL` (set by `SqliteClient`) cover this, but the test confirms it explicitly with a temp DB.
 
-4. **Lint/format**: `bun run lint` and `bun run format:check` must pass.
+4. **Typecheck**: `bun run typecheck` across all packages must pass with zero errors.
 
-5. **MCP server smoke**: Run the extracted MCP server binary with `GHUI_REVIEW_DIR=/tmp/test-review GHUI_ACP_STORE_PATH=/tmp/test.sqlite`. Confirm it starts, registers tools, and handles a `list_tools` call without crashing.
+5. **Lint/format**: `bun run lint` and `bun run format:check` must pass.
 
-6. **App smoke**: `bun run start:mock` must render without runtime errors; ACP modals should remain accessible.
+6. **MCP server smoke**: Run the extracted MCP server binary with `GHUI_REVIEW_DIR=/tmp/test-review GHUI_ACP_STORE_PATH=/tmp/test.sqlite`. Confirm it starts, registers tools, and handles a `list_tools` call without crashing.
+
+7. **App smoke**: `bun run start:mock` must render without runtime errors; ACP modals should remain accessible.
 
 ---
 
@@ -280,12 +303,13 @@ No behavioural change needed; the env var switch (`GHUI_ACP_STORE_PATH`) is hand
 
 | # | Risk / Question | Severity | Proposed resolution |
 |---|----------------|----------|---------------------|
-| 1 | **Data migration for existing users** — current ACP data lives in `~/.cache/ghui/cache.sqlite` (same DB as PR cache). Extracting to `acp.sqlite` silently abandons existing session/finding rows. | Low — session data is ephemeral and not user-precious | On first run, if `acp.sqlite` doesn't exist and old DB has ACP tables, emit a one-time notice. No automatic migration. |
-| 2 | **WorktreeService stays in core** — is that the right call? It has no ACP dependency but is only used in the ACP flow. | Medium | Keeping it in `@ghui/core` is correct because its concerns (git worktrees, `repoMappings`) are independent of ACP. The app wires WorktreeService + ACPService together. Revisit if a standalone consumer wants worktree management too. |
+| 1 | **Data migration for existing users** — current ACP data lives in `~/.cache/ghui/cache.sqlite` (same DB as PR cache). Extracting to `acp.sqlite` silently abandons existing session/finding rows. | Low — session data is ephemeral and not user-precious | On first run, if `acp.sqlite` doesn't exist and old DB has ACP tables, emit a one-time notice. No automatic migration. The `"002_acp_review"` migration in CacheService is replaced with a no-op stub so existing installs don't break. |
+| 2 | **WorktreeService and the CacheService split** — WorktreeService calls `cache.upsertWorktree`, `cache.deleteWorktree`, `cache.listWorktrees`. These CAN'T move to ACPStore without creating a `@ghui/core → @ghui/acp` circular dependency. | Resolved | `review_worktrees` table stays in `CacheService`. Worktree CRUD is git state, not ACP protocol state. WorktreeService stays in `@ghui/core` unchanged. |
 | 3 | **`@ghui/core` still exports ACP types** — re-exporting from `@ghui/acp` adds a transitive dependency on `@effect/sql-sqlite-bun` into `@ghui/core`'s public type surface. | Low — both are private workspace packages | Types can be re-exported without the runtime dependency because TypeScript strips them. The bundler will not pull in SQLite if the consumer only uses types. |
 | 4 | **`ACPConfigService` vs passing config directly** — is a `Context.Service` wrapper for a plain config object warranted? | Low | A `Context.Service` preserves testability (easy mock) and is consistent with existing patterns. Worth the boilerplate. |
 | 5 | **MCP server binary entry point** — `src/standalone.ts` currently runs `runMcpServer()` directly. After move, the import path changes. The standalone binary is bundled; the bundler must resolve `@ghui/acp`. | Low — already uses workspace packages | `packages/acp` is a workspace member; bundler sees it the same way it sees `@ghui/core`. |
 | 6 | **`GHUI_ACP_STORE_PATH` env var naming** — current MCP server uses `GHUI_CACHE_PATH`. Renaming is a breaking change for any user who has manually configured the env var. | Low — unlikely to be set by end users | Accept the rename. Document in changelog. |
+| 7 | **MCP server raw SQLite vs Effect-managed WAL** — the MCP subprocess opens `acp.sqlite` via raw `bun:sqlite` while the main process has it open via Effect SQL (WAL mode). Both SQLite writers need `busy_timeout`. | Low — existing pragmas cover this | MCP server raw `Database` open will inherit WAL from the journal file. Explicit concurrent-access test in verification plan (item 3) confirms this. |
 
 ---
 
