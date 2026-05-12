@@ -15,6 +15,10 @@ const runProcess = Effect.fn("CommandRunner.runProcess")((command: string, args:
 		async try() {
 			const proc = spawn(command, [...args], {
 				stdio: [stdin !== undefined ? "pipe" : "ignore", "pipe", "pipe"],
+				env: {
+					...process.env,
+					PATH: process.env.PATH ?? "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin",
+				},
 			})
 			if (stdin !== undefined && proc.stdin) {
 				proc.stdin.write(stdin)
