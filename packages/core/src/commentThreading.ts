@@ -86,6 +86,11 @@ export const orderCommentsForDisplay = (comments: readonly PullRequestComment[])
 		for (const child of children) visit(child, indent + 1)
 	}
 	for (const root of roots) visit(root, 0)
+	for (const comment of comments) {
+		if (!visited.has(comment.id)) {
+			ordered.push({ comment, indent: 0 })
+		}
+	}
 	return ordered
 }
 

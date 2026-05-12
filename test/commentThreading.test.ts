@@ -113,21 +113,23 @@ describe("orderCommentsForDisplay", () => {
 		expect(result.map((r) => r.comment.id)).toEqual(["root", "child1", "grandchild", "child2"])
 	})
 
-	test("cycle safety - self-referencing comment does not infinite loop", () => {
+	test("cycle safety - self-referencing comment surfaces as orphan root", () => {
 		const comments = [reviewComment("a", "alice", "self", { inReplyTo: "a", createdAt: new Date(1000) })]
-		// Self-ref means it's a child of itself, never a root, so it's unreachable — but no infinite loop
 		const result = orderCommentsForDisplay(comments)
-		expect(result).toHaveLength(0)
+		expect(result).toHaveLength(1)
+		expect(result[0]!.comment.id).toBe("a")
+		expect(result[0]!.indent).toBe(0)
 	})
 
-	test("cycle safety - mutual reference does not infinite loop", () => {
+	test("cycle safety - mutual reference surfaces both as orphan roots", () => {
 		const comments = [
 			reviewComment("a", "alice", "a", { inReplyTo: "b", createdAt: new Date(1000) }),
 			reviewComment("b", "bob", "b", { inReplyTo: "a", createdAt: new Date(2000) }),
 		]
-		// Both are children of each other, neither is a root — but no infinite loop
 		const result = orderCommentsForDisplay(comments)
-		expect(result).toHaveLength(0)
+		expect(result).toHaveLength(2)
+		expect(result.map((r) => r.comment.id)).toEqual(["a", "b"])
+		expect(result.every((r) => r.indent === 0)).toBe(true)
 	})
 })
 

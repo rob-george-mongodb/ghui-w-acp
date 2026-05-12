@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from "react"
+import { useState, useMemo, useEffect, useCallback, useRef } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import type { PullRequestItem, PullRequestView } from "@ghui/core"
 import { pullRequestQueueModes, pullRequestQueueLabels } from "@ghui/core"
@@ -18,11 +18,13 @@ export const PRList = ({ activeView, selectedPR, onSelectPR, onViewChange }: PRL
 	const [filter, setFilter] = useState("")
 	const [cursor, setCursor] = useState<string | null>(null)
 	const [accumulated, setAccumulated] = useState<PullRequestItem[]>([])
+	const consumedCursors = useRef(new Set<string | null>())
 	const queryClient = useQueryClient()
 
 	useEffect(() => {
 		setCursor(null)
 		setAccumulated([])
+		consumedCursors.current.clear()
 	}, [activeView])
 
 	const { data, isLoading, error } = useQuery({
@@ -31,7 +33,8 @@ export const PRList = ({ activeView, selectedPR, onSelectPR, onViewChange }: PRL
 	})
 
 	useEffect(() => {
-		if (data) {
+		if (data && !consumedCursors.current.has(cursor)) {
+			consumedCursors.current.add(cursor)
 			setAccumulated((prev) => (cursor === null ? [...data.items] : [...prev, ...data.items]))
 		}
 	}, [data, cursor])
@@ -77,6 +80,7 @@ export const PRList = ({ activeView, selectedPR, onSelectPR, onViewChange }: PRL
 	const handleRefresh = useCallback(() => {
 		setCursor(null)
 		setAccumulated([])
+		consumedCursors.current.clear()
 		queryClient.invalidateQueries({ queryKey: ["pr:list"] })
 	}, [queryClient])
 
