@@ -1,5 +1,5 @@
 import { ipcMain } from "electron"
-import { Effect, ManagedRuntime } from "effect"
+import { Cause, Effect, Exit, ManagedRuntime } from "effect"
 import { BrowserOpener, CacheService, Clipboard, CommandRunner, GitHubService, type AppConfig, AppConfigService } from "@ghui/core/node"
 import type { PullRequestView } from "@ghui/core/node"
 import type { IpcChannel, IpcChannels, IpcError, IpcResult } from "../shared/ipcProtocol.js"
@@ -185,11 +185,10 @@ export const setupIpcHandlers = (appConfig: AppConfig) => {
 	handle("auth:check", () =>
 		Effect.gen(function* () {
 			const command = yield* CommandRunner
-			const result = yield* command.run("gh", ["auth", "status"]).pipe(Effect.result)
-			if (result._tag === "Success") return { ok: true as const }
-			const error = result.failure
-			const message = error && typeof error === "object" && "detail" in error ? String((error as { detail: string }).detail) : String(error)
-			return { ok: false as const, error: message }
+			const result = yield* command.run("gh", ["auth", "status"]).pipe(Effect.exit)
+			if (Exit.isSuccess(result)) return { ok: true as const }
+			const pretty = Cause.pretty(result.cause)
+			return { ok: false as const, error: pretty }
 		}),
 	)
 

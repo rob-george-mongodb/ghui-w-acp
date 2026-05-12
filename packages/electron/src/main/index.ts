@@ -45,8 +45,9 @@ app.whenReady().then(() => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow()
 	})
 
-	app.on("will-quit", () => {
-		runtime.dispose()
+	app.on("will-quit", (event) => {
+		event.preventDefault()
+		runtime.dispose().then(() => app.quit())
 	})
 })
 
