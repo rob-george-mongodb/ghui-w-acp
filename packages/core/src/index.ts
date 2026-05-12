@@ -63,6 +63,7 @@ export {
 	type SessionMessage,
 	type ReviewReport,
 	type ReviewWorktree,
+	type TrackedComment,
 } from "./domain.js"
 export * from "./errors.js"
 export * from "./date.js"

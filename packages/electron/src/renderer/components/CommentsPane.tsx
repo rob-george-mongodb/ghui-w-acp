@@ -53,8 +53,13 @@ export const CommentsPane = ({ repo, number, onClose }: CommentsPaneProps) => {
 	})
 
 	const editComment = useMutation({
-		mutationFn: ({ id, tag, body }: { id: string; tag: PullRequestComment["_tag"]; body: string }) =>
-			tag === "review-comment" ? coreBridge.editComment(repo, id, body) : coreBridge.editIssueComment(repo, id, body),
+		mutationFn: async ({ id, tag, body }: { id: string; tag: PullRequestComment["_tag"]; body: string }) => {
+			if (tag === "review-comment") {
+				await coreBridge.editComment(repo, id, body)
+			} else {
+				await coreBridge.editIssueComment(repo, id, body)
+			}
+		},
 		onSuccess: invalidate,
 	})
 
