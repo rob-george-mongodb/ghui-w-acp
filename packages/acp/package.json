@@ -1,0 +1,15 @@
+{
+	"name": "@ghui/acp",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"description": "ACP (Agent Client Protocol) integration for ghui — session lifecycle, findings, reports, and the MCP tool server.",
+	"exports": {
+		".": "./src/index.ts",
+		"./mcp": "./src/mcp/server.ts"
+	},
+	"scripts": {
+		"test": "bun test test",
+		"typecheck": "bunx tsc --noEmit"
+	},
+}

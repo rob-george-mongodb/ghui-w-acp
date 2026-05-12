@@ -45,8 +45,8 @@
 		"dev:logo": "bun --watch dev/loadingLogo.tsx",
 		"start": "bun run src/index.tsx",
 		"start:mock": "GHUI_MOCK_PR_COUNT=400 GHUI_MOCK_REPO_COUNT=4 bun run src/index.tsx",
-		"test": "bun test ./test/ && bun run --cwd packages/keymap test && bun run --cwd packages/core test",
-		"typecheck": "tsc --noEmit && bun run --cwd packages/keymap typecheck && bun run --cwd packages/core typecheck",
+		"test": "bun test ./test/ && bun run --cwd packages/keymap test && bun run --cwd packages/core test && bun run --cwd packages/acp test",
+		"typecheck": "tsc --noEmit && bun run --cwd packages/keymap typecheck && bun run --cwd packages/core typecheck && bun run --cwd packages/acp typecheck",
 		"lint": "oxlint --tsconfig tsconfig.json src/ test/ packages/*/src/",
 		"format": "oxfmt src/ test/ dev/ packages/*/src/",
 		"format:check": "oxfmt --check src/ test/ dev/ packages/*/src/",
@@ -72,6 +72,7 @@
 	"devDependencies": {
 		"@ghui/core": "workspace:*",
 		"@ghui/keymap": "workspace:*",
+		"@ghui/acp": "workspace:*",
 		"@effect/language-service": "0.85.1",
 		"@types/bun": "1.3.12",
 		"@types/react": "19.2.14",

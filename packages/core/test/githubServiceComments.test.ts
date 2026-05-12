@@ -5,7 +5,7 @@ import { GitHubService } from "@ghui/core/node"
 
 const testAppConfig = Layer.succeed(
 	AppConfigService,
-	AppConfigService.of({ prFetchLimit: 200, prPageSize: 50, cachePath: null, prUpdatedSinceWindow: "1m", jsonConfig: {} }),
+	AppConfigService.of({ prFetchLimit: 200, prPageSize: 50, cachePath: null, acpStorePath: null, prUpdatedSinceWindow: "1m", jsonConfig: {} }),
 )
 
 interface RecordedCall {

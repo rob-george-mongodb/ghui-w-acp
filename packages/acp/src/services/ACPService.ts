@@ -6,15 +6,33 @@ import { Readable, Writable } from "node:stream"
 import * as acp from "@agentclientprotocol/sdk"
 import type { RequestPermissionRequest, RequestPermissionResponse, SessionNotification } from "@agentclientprotocol/sdk"
 import { Context, Effect, Fiber, Layer, Schema } from "effect"
-import { AppConfigService } from "../config.js"
-import type { PullRequestItem, ReviewSession } from "../domain.js"
-import { CacheService } from "./CacheService.js"
+import type { ReviewSession } from "../domain.js"
+import { ACPStore } from "./ACPStore.js"
 import { ReviewWatcher } from "./ReviewWatcher.js"
 
 export class ACPError extends Schema.TaggedErrorClass<ACPError>()("ACPError", {
 	cause: Schema.Defect,
 	message: Schema.String,
 }) {}
+
+export interface ACPAgentConfig {
+	readonly name: string
+	readonly command: readonly string[]
+	readonly defaultModel?: string
+}
+
+export interface ACPConfig {
+	readonly agents: readonly ACPAgentConfig[]
+	readonly defaultAgent?: string
+	readonly storePath?: string | null
+}
+
+export class ACPConfigService extends Context.Service<ACPConfigService, ACPConfig>()("ghui/ACPConfig") {}
+
+export interface ACPPrRef {
+	readonly repository: string
+	readonly number: number
+}
 
 interface Accumulator {
 	text: string
@@ -37,18 +55,18 @@ interface SessionHandle {
 export class ACPService extends Context.Service<
 	ACPService,
 	{
-		readonly startReviewSession: (pr: PullRequestItem, worktreePath: string) => Effect.Effect<ReviewSession, ACPError>
-		readonly startChatSession: (pr: PullRequestItem, worktreePath: string) => Effect.Effect<ReviewSession, ACPError>
+		readonly startReviewSession: (pr: ACPPrRef, worktreePath: string) => Effect.Effect<ReviewSession, ACPError>
+		readonly startChatSession: (pr: ACPPrRef, worktreePath: string) => Effect.Effect<ReviewSession, ACPError>
 		readonly sendPrompt: (sessionId: string, text: string) => Effect.Effect<{ stopReason: string }, ACPError>
 		readonly cancelSession: (sessionId: string) => Effect.Effect<void, never>
 		readonly closeSession: (sessionId: string) => Effect.Effect<void, never>
 	}
 >()("ghui/ACPService") {
-	static readonly layer: Layer.Layer<ACPService, never, AppConfigService | CacheService | ReviewWatcher> = Layer.effect(
+	static readonly layer: Layer.Layer<ACPService, never, ACPConfigService | ACPStore | ReviewWatcher> = Layer.effect(
 		ACPService,
 		Effect.gen(function* () {
-			const config = yield* AppConfigService
-			const cache = yield* CacheService
+			const config = yield* ACPConfigService
+			const store = yield* ACPStore
 			const watcher = yield* ReviewWatcher
 
 			const handles = new Map<string, SessionHandle>()
@@ -71,12 +89,12 @@ export class ACPService extends Context.Service<
 			})
 
 			const getAgentConfig = () => {
-				const agents = config.jsonConfig.acp?.agents ?? []
-				const defaultName = config.jsonConfig.acp?.defaultAgent
+				const agents = config.agents ?? []
+				const defaultName = config.defaultAgent
 				return agents.find((a) => a.name === defaultName) ?? agents[0] ?? { name: "opencode", command: ["opencode", "acp"] }
 			}
 
-			const createSession = (pr: PullRequestItem, worktreePath: string, sessionType: "review" | "chat"): Effect.Effect<ReviewSession, ACPError> =>
+			const createSession = (pr: ACPPrRef, worktreePath: string, sessionType: "review" | "chat"): Effect.Effect<ReviewSession, ACPError> =>
 				Effect.gen(function* () {
 					const agentConfig = getAgentConfig()
 					const pk = `${pr.repository}#${pr.number}`
@@ -132,7 +150,7 @@ export class ACPService extends Context.Service<
 											{ name: "GHUI_REVIEW_DIR", value: reviewDir },
 											{ name: "GHUI_PR_KEY", value: pk },
 											{ name: "GHUI_SESSION_ID", value: "" },
-											{ name: "GHUI_CACHE_PATH", value: config.cachePath ?? "" },
+											{ name: "GHUI_ACP_STORE_PATH", value: config.storePath ?? "" },
 										],
 									},
 								],
@@ -158,7 +176,7 @@ export class ACPService extends Context.Service<
 						stopReason: null,
 					}
 
-					yield* cache.upsertSession(session)
+					yield* store.upsertSession(session)
 
 					handles.set(acpSessionId, {
 						proc,
@@ -177,9 +195,9 @@ export class ACPService extends Context.Service<
 					return session
 				})
 
-			const startReviewSession = (pr: PullRequestItem, worktreePath: string) => createSession(pr, worktreePath, "review")
+			const startReviewSession = (pr: ACPPrRef, worktreePath: string) => createSession(pr, worktreePath, "review")
 
-			const startChatSession = (pr: PullRequestItem, worktreePath: string) => createSession(pr, worktreePath, "chat")
+			const startChatSession = (pr: ACPPrRef, worktreePath: string) => createSession(pr, worktreePath, "chat")
 
 			const sendPrompt = (sessionId: string, text: string): Effect.Effect<{ stopReason: string }, ACPError> =>
 				Effect.gen(function* () {
@@ -188,7 +206,7 @@ export class ACPService extends Context.Service<
 						return yield* Effect.fail(new ACPError({ cause: new Error("Session not found"), message: `No active session: ${sessionId}` }))
 					}
 
-					yield* cache.appendMessage({
+					yield* store.appendMessage({
 						id: randomUUID(),
 						sessionId,
 						role: "user",
@@ -238,7 +256,7 @@ export class ACPService extends Context.Service<
 					})
 
 					if (handle.accumulator.text) {
-						yield* cache.appendMessage({
+						yield* store.appendMessage({
 							id: randomUUID(),
 							sessionId,
 							role: "assistant",
@@ -269,7 +287,7 @@ export class ACPService extends Context.Service<
 					if (handle.watcherFiber) {
 						yield* Fiber.interrupt(handle.watcherFiber).pipe(Effect.ignore)
 					}
-					yield* cache.endSession(sessionId, new Date(), handle.lastStopReason ?? undefined).pipe(Effect.ignore)
+					yield* store.endSession(sessionId, new Date(), handle.lastStopReason ?? undefined).pipe(Effect.ignore)
 					try {
 						handle.proc.kill("SIGTERM")
 					} catch {}

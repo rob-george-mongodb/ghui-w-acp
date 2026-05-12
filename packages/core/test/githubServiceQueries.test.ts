@@ -22,6 +22,7 @@ const testAppConfig = (overrides: Partial<{ prFetchLimit: number; prPageSize: nu
 			prFetchLimit: overrides.prFetchLimit ?? 200,
 			prPageSize: overrides.prPageSize ?? 50,
 			cachePath: null,
+			acpStorePath: null,
 			prUpdatedSinceWindow: (overrides.prUpdatedSinceWindow ?? "1m") as "1m" | "3m" | "1y" | "any",
 			jsonConfig: {},
 		}),

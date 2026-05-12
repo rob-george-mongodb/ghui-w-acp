@@ -1,5 +1,5 @@
 import { TextAttributes } from "@opentui/core"
-import type { ReviewFinding, ReviewSession, SessionMessage } from "@ghui/core"
+import type { ReviewFinding, ReviewSession, SessionMessage } from "@ghui/acp"
 import { clampCursor, commentEditorLines, cursorLineIndexForLines } from "./commentEditor.js"
 import { colors } from "./colors.js"
 import { centerCell, Filler, fitCell, HintRow, PlainLine, standardModalDims, StandardModal, TextLine } from "./primitives.js"

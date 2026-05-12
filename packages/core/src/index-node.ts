@@ -48,22 +48,6 @@ export {
 	type PullRequestReviewEvent,
 	isReviewComment,
 	isIssueComment,
-	findingSeverities,
-	type FindingSeverity,
-	findingStatuses,
-	type FindingStatus,
-	findingSources,
-	type FindingSource,
-	reviewVerdicts,
-	type ReviewVerdict,
-	reviewSessionTypes,
-	type ReviewSessionType,
-	sessionMessageRoles,
-	type SessionMessageRole,
-	type ReviewFinding,
-	type ReviewSession,
-	type SessionMessage,
-	type ReviewReport,
 	type ReviewWorktree,
 } from "./domain.js"
 export * from "./errors.js"
@@ -118,6 +102,33 @@ export {
 
 export { makeCoreLayer, type CoreLayerOptions } from "./runtime.js"
 
-export { ACPService, ACPError } from "./services/ACPService.js"
-export { ReviewWatcher } from "./services/ReviewWatcher.js"
+export {
+	ACPService,
+	ACPError,
+	ACPConfigService,
+	ACPStore,
+	ACPStoreError,
+	ReviewWatcher,
+	makeACPLayer,
+	type ACPLayerOptions,
+	type ACPConfig,
+	type ACPAgentConfig,
+	type ACPPrRef,
+	type FindingSeverity,
+	findingSeverities,
+	type FindingStatus,
+	findingStatuses,
+	type FindingSource,
+	findingSources,
+	type ReviewVerdict,
+	reviewVerdicts,
+	type ReviewSessionType,
+	reviewSessionTypes,
+	type SessionMessageRole,
+	sessionMessageRoles,
+	type ReviewFinding,
+	type ReviewSession,
+	type SessionMessage,
+	type ReviewReport,
+} from "@ghui/acp"
 export { WorktreeService, WorktreeError } from "./services/WorktreeService.js"

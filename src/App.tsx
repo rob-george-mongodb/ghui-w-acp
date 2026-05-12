@@ -61,6 +61,7 @@ import {
 	Clipboard,
 	GitHubService,
 	ACPService,
+	ACPStore,
 	WorktreeService,
 	type ReviewFinding,
 	type ReviewSession,
@@ -587,16 +588,14 @@ const startReviewSessionAtom = githubRuntime.fn<{ readonly pr: PullRequestItem; 
 	ACPService.use((acp) => acp.startReviewSession(input.pr, input.worktreePath)),
 )
 const sendAIPromptAtom = githubRuntime.fn<{ readonly sessionId: string; readonly text: string }>()((input) => ACPService.use((acp) => acp.sendPrompt(input.sessionId, input.text)))
-const listFindingsAtom = githubRuntime.fn<string>()((prKey) => CacheService.use((cache) => cache.listFindings(prKey)))
+const listFindingsAtom = githubRuntime.fn<string>()((prKey) => ACPStore.use((store) => store.listFindings(prKey)))
 const updateFindingStatusAtom = githubRuntime.fn<{ readonly id: string; readonly status: FindingStatus; readonly modifiedBody?: string }>()((input) =>
-	CacheService.use((cache) => cache.updateFindingStatus(input.id, input.status, input.modifiedBody)),
+	ACPStore.use((store) => store.updateFindingStatus(input.id, input.status, input.modifiedBody)),
 )
-const markFindingPostedAtom = githubRuntime.fn<{ readonly id: string; readonly url: string }>()((input) =>
-	CacheService.use((cache) => cache.markFindingPosted(input.id, input.url)),
-)
-const upsertFindingAtom = githubRuntime.fn<ReviewFinding>()((finding) => CacheService.use((cache) => cache.upsertFinding(finding)))
-const listSessionsAtom = githubRuntime.fn<string>()((prKey) => CacheService.use((cache) => cache.listSessions(prKey)))
-const listMessagesAtom = githubRuntime.fn<string>()((sessionId) => CacheService.use((cache) => cache.listMessages(sessionId)))
+const markFindingPostedAtom = githubRuntime.fn<{ readonly id: string; readonly url: string }>()((input) => ACPStore.use((store) => store.markFindingPosted(input.id, input.url)))
+const upsertFindingAtom = githubRuntime.fn<ReviewFinding>()((finding) => ACPStore.use((store) => store.upsertFinding(finding)))
+const listSessionsAtom = githubRuntime.fn<string>()((prKey) => ACPStore.use((store) => store.listSessions(prKey)))
+const listMessagesAtom = githubRuntime.fn<string>()((sessionId) => ACPStore.use((store) => store.listMessages(sessionId)))
 
 const pickInitialMergeMethod = (allowed: RepositoryMergeMethods | null, preferred: PullRequestMergeMethod | undefined): PullRequestMergeMethod => {
 	if (!allowed) return preferred ?? pullRequestMergeMethods[0]

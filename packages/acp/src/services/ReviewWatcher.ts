@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import { Context, Effect, Layer } from "effect"
 import type { ReviewFinding } from "../domain.js"
-import { CacheService } from "./CacheService.js"
+import { ACPStore } from "./ACPStore.js"
 
 interface WatchParams {
 	readonly reviewDir: string
@@ -19,10 +19,10 @@ export class ReviewWatcher extends Context.Service<
 		readonly finalSweep: (params: WatchParams & { readonly lastOffset: number }) => Effect.Effect<number>
 	}
 >()("ghui/ReviewWatcher") {
-	static readonly layer: Layer.Layer<ReviewWatcher, never, CacheService> = Layer.effect(
+	static readonly layer: Layer.Layer<ReviewWatcher, never, ACPStore> = Layer.effect(
 		ReviewWatcher,
 		Effect.gen(function* () {
-			const cache = yield* CacheService
+			const store = yield* ACPStore
 
 			const processLines = (lines: readonly string[], params: WatchParams): Effect.Effect<void> =>
 				Effect.gen(function* () {
@@ -48,7 +48,7 @@ export class ReviewWatcher extends Context.Service<
 								createdAt: new Date(String(raw.createdAt ?? new Date().toISOString())),
 								updatedAt: new Date(String(raw.createdAt ?? new Date().toISOString())),
 							}
-							yield* cache.upsertFinding(finding)
+							yield* store.upsertFinding(finding)
 							if (params.onFinding) {
 								yield* params.onFinding(finding)
 							}

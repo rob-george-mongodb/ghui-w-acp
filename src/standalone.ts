@@ -45,7 +45,7 @@ if (command === "upgrade") {
 }
 
 if (command === "mcp-server") {
-	const { runMcpServer } = await import("./mcp/server.js")
+	const { runMcpServer } = await import("@ghui/acp/mcp")
 	await runMcpServer()
 	process.exit(0)
 }

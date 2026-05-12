@@ -16,6 +16,14 @@ const resolveCachePath = () => {
 	return value && value.length > 0 ? value : defaultCachePath()
 }
 
+const defaultAcpStorePath = () => join(process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"), "ghui", "acp.sqlite")
+
+const resolveAcpStorePath = () => {
+	const value = process.env.GHUI_ACP_STORE_PATH?.trim()
+	if (value === "off" || value === "0" || value === "false") return null
+	return value && value.length > 0 ? value : defaultAcpStorePath()
+}
+
 interface AcpAgentConfig {
 	readonly name: string
 	readonly command: readonly string[]
@@ -51,6 +59,7 @@ export interface AppConfig {
 	readonly prFetchLimit: number
 	readonly prPageSize: number
 	readonly cachePath: string | null
+	readonly acpStorePath: string | null
 	readonly prUpdatedSinceWindow: PullRequestUpdatedSinceWindow
 	readonly jsonConfig: GhuiJsonConfig
 }
@@ -61,6 +70,7 @@ const appConfig = Config.all({
 	prFetchLimit: Config.int("GHUI_PR_FETCH_LIMIT").pipe(Config.withDefault(200), Config.map(positiveIntOr(200))),
 	prPageSize: Config.int("GHUI_PR_PAGE_SIZE").pipe(Config.withDefault(50), Config.map(pageSizeOr(50))),
 	cachePath: Config.succeed(resolveCachePath()),
+	acpStorePath: Config.succeed(resolveAcpStorePath()),
 	prUpdatedSinceWindow: Config.string("GHUI_PR_UPDATED_SINCE").pipe(
 		Config.withDefault("1m"),
 		Config.map((v): PullRequestUpdatedSinceWindow => {
