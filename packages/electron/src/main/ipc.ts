@@ -146,6 +146,55 @@ export const setupIpcHandlers = (appConfig: AppConfig) => {
 		}),
 	)
 
+	handle("pr:reviewComment:reply", (repo, number, inReplyTo, body) =>
+		Effect.gen(function* () {
+			const github = yield* GitHubService
+			return yield* github.replyToReviewComment(repo, number, inReplyTo, body)
+		}),
+	)
+
+	handle("pr:issueComment:edit", (repo, commentId, body) =>
+		Effect.gen(function* () {
+			const github = yield* GitHubService
+			return yield* github.editPullRequestIssueComment(repo, commentId, body)
+		}),
+	)
+
+	handle("pr:issueComment:delete", (repo, commentId) =>
+		Effect.gen(function* () {
+			const github = yield* GitHubService
+			yield* github.deletePullRequestIssueComment(repo, commentId)
+		}),
+	)
+
+	handle("comment:track", (commentId, prKey) =>
+		Effect.gen(function* () {
+			const cache = yield* CacheService
+			yield* cache.trackComment(commentId, prKey)
+		}),
+	)
+
+	handle("comment:resolve", (commentId) =>
+		Effect.gen(function* () {
+			const cache = yield* CacheService
+			yield* cache.resolveComment(commentId)
+		}),
+	)
+
+	handle("comment:listTracked", (prKey) =>
+		Effect.gen(function* () {
+			const cache = yield* CacheService
+			return yield* cache.listTrackedComments(prKey)
+		}),
+	)
+
+	handle("comment:listAllUnresolved", () =>
+		Effect.gen(function* () {
+			const cache = yield* CacheService
+			return yield* cache.listAllUnresolvedTrackedComments()
+		}),
+	)
+
 	handle("clipboard:copy", (text) =>
 		Effect.gen(function* () {
 			const clipboard = yield* Clipboard

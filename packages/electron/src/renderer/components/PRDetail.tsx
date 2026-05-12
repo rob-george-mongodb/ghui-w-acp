@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { coreBridge } from "../hooks/useCoreBridge.js"
 import { LabelBadge } from "./LabelBadge.js"
 import { StatusChecks } from "./StatusChecks.js"
-import { MergeControls } from "./MergeControls.js"
+import Markdown from "react-markdown"
 
 interface PRDetailProps {
 	repo: string
@@ -91,9 +91,11 @@ export const PRDetail = ({ repo, number }: PRDetailProps) => {
 				</div>
 			)}
 
-			{pr.body && <div className="pr-detail-body">{pr.body}</div>}
-
-			<MergeControls repo={repo} number={number} />
+		{pr.body && (
+			<div className="pr-detail-body">
+				<Markdown>{pr.body}</Markdown>
+			</div>
+		)}
 		</div>
 	)
 }

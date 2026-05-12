@@ -12,10 +12,11 @@
 	},
 	"dependencies": {
 		"@ghui/core": "workspace:*",
-		"effect": "4.0.0-beta.59",
 		"@tanstack/react-query": "^5.100.9",
+		"effect": "4.0.0-beta.59",
 		"react": "19.2.5",
-		"react-dom": "19.2.5"
+		"react-dom": "19.2.5",
+		"react-markdown": "^10.1.0"
 	},
 	"devDependencies": {
 		"electron": "37.10.3",

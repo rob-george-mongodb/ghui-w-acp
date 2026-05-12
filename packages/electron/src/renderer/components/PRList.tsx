@@ -49,9 +49,7 @@ export const PRList = ({ activeView, selectedPR, onSelectPR, onViewChange }: PRL
 	return (
 		<div className="pr-list-pane">
 			<div className="pr-list-tabs">
-				{pullRequestQueueModes
-					.filter((m) => m !== "inbox")
-					.map((mode) => (
+			{pullRequestQueueModes.map((mode) => (
 						<button key={mode} className={`pr-list-tab ${currentMode === mode ? "active" : ""}`} onClick={() => onViewChange({ _tag: "Queue", mode, repository: currentRepo })}>
 							{pullRequestQueueLabels[mode]}
 						</button>

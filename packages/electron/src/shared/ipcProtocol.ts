@@ -10,6 +10,7 @@ import type {
 	PullRequestReviewComment,
 	RepositoryMergeMethods,
 	SubmitPullRequestReviewInput,
+	TrackedComment,
 } from "@ghui/core/node"
 import type { PullRequestLoad } from "@ghui/core/node"
 import type { PullRequestView } from "@ghui/core/node"
@@ -31,6 +32,13 @@ export type IpcChannels = {
 	"pr:comment:create": { args: [input: CreatePullRequestCommentInput]; result: PullRequestReviewComment }
 	"pr:comment:edit": { args: [repo: string, commentId: string, body: string]; result: void }
 	"pr:comment:delete": { args: [repo: string, commentId: string]; result: void }
+	"pr:reviewComment:reply": { args: [repo: string, number: number, inReplyTo: string, body: string]; result: PullRequestComment }
+	"pr:issueComment:edit": { args: [repo: string, commentId: string, body: string]; result: PullRequestComment }
+	"pr:issueComment:delete": { args: [repo: string, commentId: string]; result: void }
+	"comment:track": { args: [commentId: string, prKey: string]; result: void }
+	"comment:resolve": { args: [commentId: string]; result: void }
+	"comment:listTracked": { args: [prKey: string]; result: readonly TrackedComment[] }
+	"comment:listAllUnresolved": { args: []; result: readonly TrackedComment[] }
 	"clipboard:copy": { args: [text: string]; result: void }
 	"browser:open": { args: [url: string]; result: void }
 	"cache:readQueue": { args: [viewer: string, view: PullRequestView]; result: PullRequestLoad | null }
