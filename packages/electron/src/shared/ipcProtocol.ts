@@ -36,7 +36,7 @@ export type IpcChannels = {
 	"cache:readQueue": { args: [viewer: string, view: PullRequestView]; result: PullRequestLoad | null }
 	"config:get": { args: []; result: AppConfig }
 	"auth:user": { args: []; result: string }
-	"auth:check": { args: []; result: { ok: boolean; error?: string } }
+	"auth:check": { args: []; result: { ok: true } | { ok: false; error: string } }
 }
 
 export type IpcChannel = keyof IpcChannels

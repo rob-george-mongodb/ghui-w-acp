@@ -89,6 +89,8 @@ export {
 	parseRetryAfterSeconds,
 	type CommandResult,
 	type RunOptions,
+	type RunProcess,
+	makeCommandRunnerLayer,
 } from "./services/CommandRunner.js"
 export { BunCommandRunner } from "./services/CommandRunnerBun.js"
 export {

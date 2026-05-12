@@ -25,6 +25,7 @@ const createWindow = () => {
 			preload: join(__dirname, "../preload/index.mjs"),
 			contextIsolation: true,
 			nodeIntegration: false,
+			// TODO: Electron doesn't support ESM preload scripts with sandbox enabled
 			sandbox: false,
 		},
 	})
@@ -37,11 +38,15 @@ const createWindow = () => {
 }
 
 app.whenReady().then(() => {
-	setupIpcHandlers(appConfig)
+	const { runtime } = setupIpcHandlers(appConfig)
 	createWindow()
 
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow()
+	})
+
+	app.on("will-quit", () => {
+		runtime.dispose()
 	})
 })
 

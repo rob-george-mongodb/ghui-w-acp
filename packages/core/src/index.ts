@@ -73,9 +73,7 @@ export * from "./pullRequestCache.js"
 export * from "./pullRequestLoad.js"
 export * from "./pullRequestViews.js"
 export { appendPullRequestPage, PR_FETCH_RETRIES } from "./prQueries.js"
-export { BrowserOpener } from "./services/BrowserOpener.js"
 export { CacheService, CacheError, pullRequestCacheKey, type PullRequestCacheKey } from "./services/CacheService.js"
-export { Clipboard, ClipboardError } from "./services/Clipboard.js"
 export {
 	CommandRunner,
 	CommandError,
@@ -85,8 +83,9 @@ export {
 	parseRetryAfterSeconds,
 	type CommandResult,
 	type RunOptions,
+	type RunProcess,
+	makeCommandRunnerLayer,
 } from "./services/CommandRunner.js"
-export { BunCommandRunner } from "./services/CommandRunnerBun.js"
 
 export {
 	type InboxSectionId,
